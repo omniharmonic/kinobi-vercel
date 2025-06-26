@@ -1,12 +1,8 @@
 {
-  "routes": [
+  "rewrites": [
     {
-      "src": "/api/(.*)",
-      "dest": "/api"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/index.html"
+      "source": "/:path((?!api/|sw.js|manifest.json|kinobi_alpha.gif|favicon.ico|assets/|index.html|tailwind.css).*)",
+      "destination": "/index.html"
     }
   ]
 }
