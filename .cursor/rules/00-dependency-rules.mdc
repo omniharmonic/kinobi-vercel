@@ -1,0 +1,51 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+Please adapt the globs depending on your project structure. Here are the best practices for each major library/framework found in your dependencies:
+
+---
+name: react-best-practices.mdc
+description: Best practices for React applications
+globs: **/*.{ts,tsx,js,jsx}
+---
+
+- Use functional components and hooks for state management.
+- Keep components small and focused on a single responsibility.
+- Use PropTypes or TypeScript for type checking props.
+- Optimize performance with React.memo and useCallback.
+
+---
+name: react-router-dom-best-practices.mdc
+description: Best practices for routing with React Router
+globs: **/*.{ts,tsx}
+---
+
+- Use the latest version of React Router for improved features.
+- Implement nested routes for better organization of components.
+- Utilize the `useNavigate` hook for programmatic navigation.
+- Handle route transitions and loading states effectively.
+
+---
+name: bun-best-practices.mdc
+description: Best practices for using Bun as a JavaScript runtime
+globs: **/*.{ts,tsx,js,jsx}
+---
+
+- Use Bun's built-in bundler for optimized builds.
+- Leverage Bun's fast development server for quick feedback.
+- Keep scripts concise and organized in the package.json.
+- Utilize Bun's type definitions for better TypeScript support.
+
+---
+name: typescript-best-practices.mdc 
+description: TypeScript coding standards and type safety guidelines
+globs: **/*.{ts,tsx}
+---
+- Use strict null checks to avoid runtime errors.
+- Prefer interface over type for defining object shapes.
+- Use type guards and assertions for better type safety.
+- Implement proper type inference to reduce redundancy.
+
+Feel free to adjust the globs as necessary for your specific project setup!

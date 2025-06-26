@@ -16,19 +16,31 @@
 
 import { readFileSync } from 'fs';
 import Database from 'sqlite3';
+import { kv } from '@vercel/kv';
 
-// Mock Vercel KV for demonstration - replace with actual KV calls
-class MockKV {
+// Vercel KV wrapper with logging
+class VercelKV {
   static async set(key, value) {
-    console.log(`KV.SET: ${key} =>`, JSON.stringify(value, null, 2));
-    // In real usage: await kv.set(key, value);
-    return true;
+    console.log(`✅ KV.SET: ${key} => [${JSON.stringify(value).length} bytes]`);
+    try {
+      await kv.set(key, value);
+      return true;
+    } catch (error) {
+      console.error(`❌ KV.SET failed for ${key}:`, error.message);
+      throw error;
+    }
   }
 
   static async get(key) {
-    console.log(`KV.GET: ${key}`);
-    // In real usage: return await kv.get(key);
-    return null;
+    console.log(`🔍 KV.GET: ${key}`);
+    try {
+      const data = await kv.get(key);
+      console.log(`✅ KV.GET success: ${key} => ${data ? 'data found' : 'no data'}`);
+      return data;
+    } catch (error) {
+      console.error(`❌ KV.GET failed for ${key}:`, error.message);
+      throw error;
+    }
   }
 }
 
@@ -98,9 +110,9 @@ async function migrateData(dbPath) {
             tender_scores,
           };
 
-          // Store in KV (replace MockKV with actual kv calls)
+          // Store in Vercel KV
           const kvKey = `kinobi:${row.sync_id}`;
-          await MockKV.set(kvKey, instanceData);
+          await VercelKV.set(kvKey, instanceData);
 
           console.log(`  ✅ Migrated ${chores.length} chores`);
           console.log(`  ✅ Migrated ${tenders.length} tenders`);

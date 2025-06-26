@@ -7,7 +7,7 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "/api/$1"
+      "destination": "/api/[...slug]?slug=$1"
     },
     {
       "source": "/(manifest.json|sw.js|kinobi_alpha.gif)",

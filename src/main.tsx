@@ -99,6 +99,7 @@ function useSyncId() {
 function App() {
   const location = useLocation();
   const navigate = useNavigate();
+  const params = useParams();
   const [syncId, setSyncId] = useState<string | null>(null);
   const [isLoadingSyncId, setIsLoadingSyncId] = useState(true);
   const [updateAvailable, setUpdateAvailable] = useState(false);
@@ -111,10 +112,24 @@ function App() {
       setCurrentClientVersion(window.PWA_CURRENT_APP_VERSION);
     }
 
-    let currentSyncId = getSyncIdFromLocalStorage();
-
+    // Extract sync ID from URL parameter first, then fallback to localStorage
+    let currentSyncId = params.syncId || null;
+    
     if (!currentSyncId) {
-      currentSyncId = generateNewSyncIdInternal();
+      // Check if we're on the root path - redirect to localStorage sync ID or generate new one
+      currentSyncId = getSyncIdFromLocalStorage();
+      if (!currentSyncId) {
+        currentSyncId = generateNewSyncIdInternal();
+        setSyncIdInLocalStorage(currentSyncId);
+      }
+      
+      // If we're on root path, redirect to the sync ID path
+      if (location.pathname === '/') {
+        navigate(`/${currentSyncId}`, { replace: true });
+        return;
+      }
+    } else {
+      // Store URL-based sync ID in localStorage for future visits
       setSyncIdInLocalStorage(currentSyncId);
     }
 
@@ -154,8 +169,6 @@ function App() {
         console.error('Service Worker registration failed:', error);
       });
 
-
-
     // 3. Listen for controller change (new SW has activated)
     const controllerChangeHandler = () => {
       if (refreshingRef.current) return;
@@ -168,7 +181,7 @@ function App() {
     return () => {
       navigator.serviceWorker.removeEventListener("controllerchange", controllerChangeHandler);
     };
-  }, []);
+  }, [params.syncId, location.pathname, navigate]);
 
   const handleUpdate = () => {
     if (!("serviceWorker" in navigator)) {
@@ -200,23 +213,24 @@ function App() {
     <SyncIdContext.Provider value={syncId}>
       <div className="flex flex-col h-screen bg-gradient-to-br from-amber-100 via-yellow-50 to-orange-100">
         <header className="bg-[#FAF9F6] p-4 shadow-md flex-shrink-0 flex items-center justify-between text-[#222]">
-          <div className="flex items-center gap-4 cursor-pointer" onClick={() => navigate("/")}> 
+          <div className="flex items-center gap-4 cursor-pointer" onClick={() => navigate(`/${syncId}`)}> 
             <img src="/kinobi_alpha.gif" alt="Kinobi" className="w-16 h-16 kinobi-logo-float" />
             <span className="text-4xl font-bold tracking-tight select-none">Kinobi</span>
           </div>
           <nav className="flex gap-6 text-lg items-center">
-            <Link to={`/history`} className="hover:text-amber-700 transition-colors">History</Link>
-            <Link to={`/leaderboard`} className="hover:text-amber-700 transition-colors">Leaderboard</Link>
-            <Link to={`/settings`} className="hover:text-amber-700 transition-colors">Settings</Link>
+            <Link to={`/${syncId}/history`} className="hover:text-amber-700 transition-colors">History</Link>
+            <Link to={`/${syncId}/leaderboard`} className="hover:text-amber-700 transition-colors">Leaderboard</Link>
+            <Link to={`/${syncId}/settings`} className="hover:text-amber-700 transition-colors">Settings</Link>
           </nav>
         </header>
         <main className="flex-grow overflow-auto bg-[#FAF9F6] text-[#222]">
           <Routes>
-            <Route path={`/`} element={<ShitView />} />
-            <Route path={`/history`} element={<HistoryView />} />
-            <Route path={`/leaderboard`} element={<LeaderboardView />} />
+            <Route path="/status" element={<StatusView />} />
+            <Route path="/:syncId" element={<ShitView />} />
+            <Route path="/:syncId/history" element={<HistoryView />} />
+            <Route path="/:syncId/leaderboard" element={<LeaderboardView />} />
             <Route
-              path={`/settings`}
+              path="/:syncId/settings"
               element={
                 <SyncSettingsView
                   updateAvailable={updateAvailable}
@@ -225,7 +239,8 @@ function App() {
                 />
               }
             />
-            <Route path="*" element={<ShitView />} />
+            <Route path="/" element={<Navigate to={`/${getSyncIdFromLocalStorage() || generateNewSyncIdInternal()}`} replace />} />
+            <Route path="*" element={<Navigate to={`/${syncId}`} replace />} />
           </Routes>
         </main>
         <footer className="bg-[#FAF9F6] p-4 text-center text-[#222] flex-shrink-0 border-t border-amber-100">
@@ -235,6 +250,23 @@ function App() {
     </SyncIdContext.Provider>
   );
 }
+
+// +++ START NEW COMPONENT +++
+// Simple status component for debugging deployment
+function StatusView() {
+  return (
+    <div className="p-8 text-center">
+      <h1 className="text-2xl font-bold text-green-700">Deployment Status: OK</h1>
+      <p className="mt-2 text-gray-600">
+        This page confirms that the Kinobi application is routing correctly.
+      </p>
+      <p className="mt-4 font-mono bg-gray-100 p-2 rounded">
+        Last Deployed: {new Date().toISOString()}
+      </p>
+    </div>
+  );
+}
+// +++ END NEW COMPONENT +++
 
 // Wrapped App with Router
 function RoutedApp() {
@@ -1838,13 +1870,16 @@ function ManageTendersComponent() {
 }
 
 function SyncSettingsComponent({ currentSyncId }: { currentSyncId: string }) {
+  const navigate = useNavigate();
   const [newCodeInput, setNewCodeInput] = useState("");
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState("");
   const [isApplying, setIsApplying] = useState(false);
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(currentSyncId);
+    // Copy the full URL instead of just the sync ID
+    const currentUrl = `${window.location.origin}/${currentSyncId}`;
+    navigator.clipboard.writeText(currentUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -1870,9 +1905,8 @@ function SyncSettingsComponent({ currentSyncId }: { currentSyncId: string }) {
     setIsApplying(true);
     setSyncIdInLocalStorage(trimmedCode);
 
-    setTimeout(() => {
-      window.location.reload();
-    }, 500);
+    // Navigate to the new sync ID
+    navigate(`/${trimmedCode}`, { replace: true });
   };
 
   const handleGenerateNew = () => {
@@ -1884,9 +1918,7 @@ function SyncSettingsComponent({ currentSyncId }: { currentSyncId: string }) {
       setIsApplying(true);
       const newGeneratedSyncId = generateNewSyncIdInternal();
       setSyncIdInLocalStorage(newGeneratedSyncId);
-      setTimeout(() => {
-        window.location.reload();
-      }, 500);
+      navigate(`/${newGeneratedSyncId}`, { replace: true });
     }
   };
 
@@ -1896,39 +1928,41 @@ function SyncSettingsComponent({ currentSyncId }: { currentSyncId: string }) {
         <div className="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-amber-500 mb-4">
         </div>
         <p>Applying new sync code...</p>
-        <p className="text-sm text-gray-500 mt-2">The view will reload with the new instance.</p>
+        <p className="text-sm text-gray-500 mt-2">Navigating to the new instance...</p>
       </div>
     );
   }
 
+  const currentUrl = `${window.location.origin}/${currentSyncId}`;
+
   return (
     <div className="bg-white rounded-lg shadow-md p-6 max-w-lg mx-auto">
       <div className="mb-6">
-        <p className="text-gray-700 mb-2 font-semibold">Your Current Sync Code:</p>
+        <p className="text-gray-700 mb-2 font-semibold">Your Current Sync URL:</p>
         <div className="flex items-center">
           <div className="bg-gray-100 p-3 rounded-md flex-1 font-mono text-sm overflow-x-auto shadow-inner">
-            {currentSyncId}
+            {currentUrl}
           </div>
           <button
             onClick={handleCopy}
             className="ml-3 p-2 bg-amber-100 hover:bg-amber-200 rounded-md text-amber-800 transition-colors duration-150 ease-in-out"
-            title="Copy sync code"
+            title="Copy sync URL"
           >
             {copied ? "Copied!" : "📋 Copy"}
           </button>
         </div>
         <p className="text-xs text-gray-500 mt-2">
-          This code links your browser to a specific Shitty data instance.
+          Share this URL with family members to sync the same chore data.
         </p>
       </div>
 
       <div className="bg-amber-50 p-4 rounded-md mb-6 border border-amber-200">
-        <h3 className="font-medium text-amber-800 mb-2">How Syncing Works Here:</h3>
+        <h3 className="font-medium text-amber-800 mb-2">How Syncing Works:</h3>
         <ul className="list-disc pl-5 space-y-1 text-sm text-amber-700">
-          <li>The Sync Code is stored in your browser's local storage.</li>
+          <li>Each sync code has its own unique URL and data set.</li>
+          <li>Share the URL above with family members to access the same chores.</li>
           <li>Changing the code switches to a different data set.</li>
-          <li>To use Shitty on another device with the SAME data, enter this exact Sync Code there.</li>
-          <li>Generating a new code effectively creates a fresh, empty Shitty instance for this browser.</li>
+          <li>Generating a new code creates a fresh, empty Kinobi instance.</li>
         </ul>
       </div>
 
@@ -1945,7 +1979,7 @@ function SyncSettingsComponent({ currentSyncId }: { currentSyncId: string }) {
               setNewCodeInput(e.target.value);
               setError("");
             }}
-            placeholder="e.g., my-living-room-display"
+            placeholder="e.g., sync_mca2hernjig8uyp"
             className={`w-full p-2 border rounded-md shadow-sm focus:ring-amber-500 focus:border-amber-500 ${
               error ? "border-red-500" : "border-gray-300"
             }`}
@@ -1957,7 +1991,7 @@ function SyncSettingsComponent({ currentSyncId }: { currentSyncId: string }) {
           className="w-full p-2 bg-amber-500 hover:bg-amber-600 text-white rounded-md transition-colors duration-150 ease-in-out disabled:opacity-70"
           disabled={!newCodeInput.trim() || newCodeInput.trim() === currentSyncId || isApplying}
         >
-          Apply & Switch Instance
+          Switch to This Sync Code
         </button>
       </form>
 
@@ -1969,7 +2003,7 @@ function SyncSettingsComponent({ currentSyncId }: { currentSyncId: string }) {
           Generate New Unique Code (New Instance)
         </button>
         <p className="text-xs text-gray-500 mt-2 text-center">
-          This will start a fresh Shitty instance on this device.
+          This will start a fresh Kinobi instance.
         </p>
       </div>
     </div>
@@ -2223,3 +2257,6 @@ function TimeDisplay({ countdownState, format = 'compact' }: TimeDisplayProps) {
     </div>
   );
 }
+
+// DEPLOYMENT MARKER - if you see this comment in browser dev tools, the latest code deployed
+console.log('🚀 Kinobi Vercel - Deployed at:', new Date().toISOString());
