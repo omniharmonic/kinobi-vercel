@@ -867,10 +867,12 @@ function TenderSelectionModal({ chore, onClose, onTended }: { chore: Chore; onCl
 
         {/* Notes section */}
         <div className="mb-4">
-          <label className="block text-sm font-medium text-amber-700 mb-1">
+          <label htmlFor="tending-notes" className="block text-sm font-medium text-amber-700 mb-1">
             Any notes about the tending?
           </label>
           <textarea
+            id="tending-notes"
+            name="tending-notes"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             className="w-full border border-amber-300 rounded px-2 py-1 focus:ring-amber-500 focus:border-amber-500 min-h-[80px] bg-yellow-50"
@@ -1747,6 +1749,8 @@ function ManageChoresComponent() {
         <div className="mt-4 space-y-2">
           <div className="flex gap-2">
             <input
+              id="new-chore-icon"
+              name="new-chore-icon"
               type="text"
               value={newChoreIcon}
               onChange={(e) => setNewChoreIcon(e.target.value)}
@@ -1756,6 +1760,8 @@ function ManageChoresComponent() {
               maxLength={2}
             />
             <input
+              id="new-chore-name"
+              name="new-chore-name"
               type="text"
               value={newChoreName}
               onChange={(e) => setNewChoreName(e.target.value)}
@@ -1766,8 +1772,10 @@ function ManageChoresComponent() {
           </div>
           <div className="flex gap-2">
             <div className="flex-1">
-              <label className="block text-xs text-amber-700 mb-1">Cycle Duration (hours)</label>
+              <label htmlFor="new-chore-cycle" className="block text-xs text-amber-700 mb-1">Cycle Duration (hours)</label>
               <input
+                id="new-chore-cycle"
+                name="new-chore-cycle"
                 type="number"
                 value={newCycleDuration}
                 onChange={(e) => setNewCycleDuration(Math.max(1, parseInt(e.target.value) || 1))}
@@ -1779,8 +1787,10 @@ function ManageChoresComponent() {
               />
             </div>
             <div className="flex-1">
-              <label className="block text-xs text-amber-700 mb-1">Points</label>
+              <label htmlFor="new-chore-points" className="block text-xs text-amber-700 mb-1">Points</label>
               <input
+                id="new-chore-points"
+                name="new-chore-points"
                 type="number"
                 value={newPoints}
                 onChange={(e) => setNewPoints(Math.max(1, parseInt(e.target.value) || 1))}
@@ -1945,6 +1955,8 @@ function ManageTendersComponent() {
         </ul>
         <div className="flex mt-4">
           <input
+            id="new-tender-name"
+            name="new-tender-name"
             type="text"
             value={newTenderName}
             onChange={(e) => setNewTenderName(e.target.value)}
@@ -2006,6 +2018,8 @@ function SyncSettingsComponent({ currentSyncId }: { currentSyncId: string }) {
         </p>
         <div className="flex items-center gap-2 mb-4">
           <input
+            id="sync-url"
+            name="sync-url"
             type="text"
             readOnly
             value={window.location.href}
@@ -2026,7 +2040,10 @@ function SyncSettingsComponent({ currentSyncId }: { currentSyncId: string }) {
           Enter a new sync code below. This will change the URL for this Kinobi instance.
         </p>
         <form onSubmit={handleApplyNewCode} className="flex items-center gap-2">
+          <label htmlFor="sync-code-input" className="sr-only">Sync Code</label>
           <input
+            id="sync-code-input"
+            name="sync-code-input"
             type="text"
             value={newSyncId}
             onChange={(e) => setNewSyncId(e.target.value)}
