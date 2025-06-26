@@ -928,6 +928,11 @@ function LeaderboardComponent() {
   const [error, setError] = useState<string | null>(null);
   const leaderboardRef = React.useRef<HTMLDivElement>(null);
 
+  console.log(`--- LEADERBOARD RENDER ---
+State:
+- Filter Period: ${filterPeriod}
+- Sort By: ${sortBy}`);
+
   const fetchLeaderboardData = useCallback(async () => {
     if (!syncId) return;
     setIsLoading(true);
@@ -960,7 +965,10 @@ function LeaderboardComponent() {
 
   // Filter and sort leaderboard data
   const processedData = React.useMemo(() => {
+    console.log('--- useMemo recalculating processedData ---');
+
     if (!leaderboardData || leaderboardData.length === 0) return [];
+    console.log('Base data for calculation:', JSON.parse(JSON.stringify(leaderboardData)));
 
     // Create a deep copy to ensure the original state is never mutated.
     const dataCopy = JSON.parse(JSON.stringify(leaderboardData));
@@ -1016,6 +1024,7 @@ function LeaderboardComponent() {
       }
     });
 
+    console.log('Resulting data from calculation:', JSON.parse(JSON.stringify(filteredData)));
     return filteredData;
   }, [leaderboardData, filterPeriod, sortBy]);
 
