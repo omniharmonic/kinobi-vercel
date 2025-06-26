@@ -434,7 +434,7 @@ function KinobiView() {
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6 p-8">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6 p-8 place-items-center">
       {chores.map((chore, index) => (
         <ChoreTile
           key={chore.id}
@@ -536,7 +536,7 @@ function ChoreTile({ chore, config, onTended, animationIndex = 0 }: { chore: Cho
   }
 
   return (
-    <div className="text-center flex flex-col items-center w-56">
+    <div className="text-center flex flex-col items-center w-full max-w-xs">
       {/* Progress Ring with Chore Icon */}
       <div className="mb-4 relative">
         {countdownState ? (
