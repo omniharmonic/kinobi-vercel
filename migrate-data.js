@@ -13,7 +13,7 @@
  *   - Install sqlite3: npm install sqlite3
  *   - Set up Vercel KV environment variables
  */
-
+import 'dotenv/config';
 import { readFileSync } from 'fs';
 import Database from 'sqlite3';
 import { kv } from '@vercel/kv';
@@ -45,15 +45,37 @@ class VercelKV {
 }
 
 function migrateChore(chore) {
+  // New Chore structure for the API and frontend
   return {
     id: chore.id,
     name: chore.name,
-    icon: chore.icon,
+    icon: chore.icon || '🧼', // Provide a default icon
     cycleDuration: chore.cycleDuration || 24,
     points: chore.points || 10,
     lastCompleted: chore.lastCompleted || null,
-    dueDate: chore.dueDate || null,
+    lastTender: chore.lastTender || null, // Field expected by new frontend
+    history: chore.history || [], // Field expected by new frontend
   };
+}
+
+function migrateTender(tender, tenderScores) {
+    const score = tenderScores.find(s => s.name === tender.name);
+    return {
+        id: tender.id,
+        name: tender.name,
+        icon: '👤', // Add a default icon
+        points: score ? score.totalPoints : 0,
+    };
+}
+
+function migrateHistory(entry) {
+    return {
+        id: entry.id,
+        chore: entry.chore_id, // Map chore_id to chore for simplicity
+        tender: entry.person, // Map person to tender
+        timestamp: entry.timestamp,
+        points: entry.points || 10, // Add default points if not present
+    };
 }
 
 function getDefaultConfig() {
@@ -94,29 +116,33 @@ async function migrateData(dbPath) {
           const tending_log = JSON.parse(row.tending_log || '[]');
           const rawChores = JSON.parse(row.chores || '[]');
           const config = row.config ? JSON.parse(row.config) : getDefaultConfig();
-          const tender_scores = JSON.parse(row.tender_scores || '[]');
+          const tender_scores = JSON.parse(row.tender_scores || '[]' );
 
-          // Migrate chores to ensure new format
-          const chores = rawChores.map(migrateChore);
+          // Data Transformation
+          const newChores = rawChores.map(migrateChore);
+          const newTenders = tenders.map(tender => migrateTender(tender, tender_scores));
+          const newHistory = tending_log.map(migrateHistory);
+          const newConfig = {
+              warningThreshold: config.warningThreshold || 75,
+              dangerThreshold: config.urgentThreshold || 90,
+              pointCycle: 24, // Add default pointCycle
+          };
 
           // Create the instance data structure for KV
           const instanceData = {
-            tenders,
-            tending_log,
-            last_tended_timestamp: row.last_tended_timestamp,
-            last_tender: row.last_tender,
-            chores,
-            config,
-            tender_scores,
+            chores: newChores,
+            tenders: newTenders,
+            history: newHistory,
+            config: newConfig,
           };
 
           // Store in Vercel KV
           const kvKey = `kinobi:${row.sync_id}`;
           await VercelKV.set(kvKey, instanceData);
 
-          console.log(`  ✅ Migrated ${chores.length} chores`);
-          console.log(`  ✅ Migrated ${tenders.length} tenders`);
-          console.log(`  ✅ Migrated ${tending_log.length} history entries`);
+          console.log(`  ✅ Migrated ${newChores.length} chores`);
+          console.log(`  ✅ Migrated ${newTenders.length} tenders`);
+          console.log(`  ✅ Migrated ${newHistory.length} history entries`);
           console.log(`  ✅ Stored as ${kvKey}`);
 
         } catch (error) {
