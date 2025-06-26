@@ -98,6 +98,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                    })).sort((a, b) => b.points - a.points);
                    return res.status(200).json(leaderboard);
                 }
+                // Add a temporary debug endpoint to inspect the raw data
+                if (resource === 'debug') {
+                    return res.status(200).json(data);
+                }
                 break;
 
             case 'POST':
