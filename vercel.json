@@ -1,11 +1,7 @@
 {
   "rewrites": [
     {
-      "source": "/api/:path*",
-      "destination": "/api"
-    },
-    {
-      "source": "/:path((?!api/|sw.js|manifest.json|kinobi_alpha.gif|favicon.ico|assets/|index.html|tailwind.css).*)",
+      "source": "/:path((?!api/|.*\\..*).*)",
       "destination": "/index.html"
     }
   ]
