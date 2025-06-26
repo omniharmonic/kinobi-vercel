@@ -6,7 +6,7 @@ export default defineConfig({
   root: '.',
   publicDir: 'public',
   build: {
-    outDir: 'dist',
+    outDir: 'public',
     rollupOptions: {
       input: resolve(__dirname, 'src/main.tsx'),
       output: {
