@@ -57,11 +57,6 @@ async function callTelegramApi(method: string, params: object) {
 export default async function handler(req: VercelRequest, res: VercelResponse) {
     // 1. Secure the endpoint
     const authHeader = req.headers.authorization;
-    
-    // TEMPORARY DEBUGGING: Log received header and expected secret
-    console.log('Received auth header:', authHeader);
-    console.log('Expected secret from env:', `Bearer ${process.env.CRON_SECRET}`);
-
     if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
         return res.status(401).json({ error: 'Unauthorized' });
     }
