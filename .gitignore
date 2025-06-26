@@ -3,3 +3,6 @@ node_modules/
 public/main.js
 public/app.js
 package-lock.json
+
+# Environment variables
+.env

@@ -1275,7 +1275,157 @@ function SyncSettingsView({ updateAvailable, onUpdate, currentClientVersion }: {
       <div className="mt-8 bg-white p-6 rounded-lg shadow-md">
         <ManageTendersComponent />
       </div>
+
+      <div className="mt-8 bg-white p-6 rounded-lg shadow-md">
+        <TelegramSettingsComponent />
+      </div>
     </div>
+  );
+}
+
+function TelegramSettingsComponent() {
+  const syncId = useSyncId();
+  const [config, setConfig] = useState<any>({});
+  const [telegramChatId, setTelegramChatId] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [linkingToken, setLinkingToken] = useState<string | null>(null);
+  const [isTokenLoading, setIsTokenLoading] = useState(false);
+
+  const fetchConfig = useCallback(async () => {
+    if (!syncId) return;
+    setIsLoading(true);
+    try {
+      const response = await fetch(`/api/${syncId}/config`);
+      if (!response.ok) throw new Error('Failed to fetch config');
+      const data = await response.json();
+      setConfig(data);
+      setTelegramChatId(data.telegramChatId || '');
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [syncId]);
+
+  useEffect(() => {
+    fetchConfig();
+  }, [fetchConfig]);
+
+  const handleSave = async () => {
+    if (!syncId) return;
+    setIsSaving(true);
+    setError(null);
+    setSuccessMessage(null);
+    try {
+      const response = await fetch(`/api/${syncId}/config`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...config, telegramChatId }),
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to save settings');
+      }
+      setSuccessMessage('Settings saved successfully!');
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const generateLinkingToken = async () => {
+    if (!syncId) return;
+    setIsTokenLoading(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/${syncId}/telegram/generate-token`, {
+        method: 'POST',
+      });
+      if (!response.ok) {
+        throw new Error('Failed to generate linking token.');
+      }
+      const data = await response.json();
+      setLinkingToken(data.token);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setIsTokenLoading(false);
+    }
+  };
+
+  return (
+    <section>
+      <h3 className="text-xl mb-3 font-semibold text-amber-700">📣 Telegram Notifications</h3>
+      <p className="text-gray-600 mb-4">
+        Get notifications in a Telegram channel when chores become overdue. You will need to add your bot to the channel and get the Channel ID.
+      </p>
+      
+      {isLoading ? (
+        <p>Loading Telegram settings...</p>
+      ) : (
+        <div className="space-y-4">
+          <div>
+            <label htmlFor="telegram-chat-id" className="block text-sm font-medium text-gray-700 mb-1">
+              Telegram Channel ID
+            </label>
+            <input
+              id="telegram-chat-id"
+              name="telegram-chat-id"
+              type="text"
+              value={telegramChatId}
+              onChange={(e) => setTelegramChatId(e.target.value)}
+              placeholder="e.g., -1001234567890"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-amber-500 focus:border-amber-500"
+              disabled={isSaving}
+            />
+            <p className="text-xs text-gray-500 mt-1">The unique identifier for your public or private channel.</p>
+          </div>
+          <div className="flex items-center gap-4">
+            <button
+              onClick={handleSave}
+              className="px-4 py-2 bg-amber-600 text-white rounded-md hover:bg-amber-700 disabled:bg-gray-400"
+              disabled={isSaving}
+            >
+              {isSaving ? 'Saving...' : 'Save Settings'}
+            </button>
+            {successMessage && <p className="text-green-600">{successMessage}</p>}
+            {error && <p className="text-red-600">{error}</p>}
+          </div>
+        </div>
+      )}
+
+      <hr className="my-6 border-amber-200" />
+
+      <div>
+        <h4 className="text-lg font-semibold text-amber-700">Link Your Telegram Account</h4>
+        <p className="text-gray-600 mb-4">
+          Generate a temporary code to link your Telegram account. This will allow you to log chores by sending messages to the bot.
+        </p>
+        <button
+          onClick={generateLinkingToken}
+          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400"
+          disabled={isTokenLoading}
+        >
+          {isTokenLoading ? 'Generating...' : 'Generate Linking Code'}
+        </button>
+
+        {linkingToken && (
+          <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-md">
+            <p className="text-blue-800">
+              Your linking code is: <strong className="text-2xl font-mono tracking-widest">{linkingToken}</strong>
+            </p>
+            <p className="text-sm text-blue-700 mt-2">
+              Send this code as a message to your Kinobi bot on Telegram. The code will expire in 10 minutes.
+            </p>
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
 

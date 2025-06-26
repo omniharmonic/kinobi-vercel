@@ -33,6 +33,10 @@ interface Config {
   warningThreshold: number;
   dangerThreshold: number;
   pointCycle: number;
+  telegramChatId?: string;
+  telegramUserId?: number;
+  telegramLinkingToken?: string;
+  telegramLinkingTokenTimestamp?: number;
 }
 
 interface KinobiData {
@@ -46,9 +50,11 @@ interface KinobiData {
 async function getInstanceData(syncId: string): Promise<KinobiData> {
   const key = `kinobi:${syncId}`;
   let data = await kv.get(key);
+  let isNew = false;
 
   // If no data is found, create a new default instance and save it.
   if (!data) {
+    isNew = true;
     const defaultData: KinobiData = {
       chores: [],
       tenders: [],
@@ -63,6 +69,10 @@ async function getInstanceData(syncId: string): Promise<KinobiData> {
     data = defaultData;
   }
   
+  if (isNew) {
+    await kv.sadd('kinobi:all_sync_ids', syncId);
+  }
+
   return data as KinobiData;
 }
 
@@ -240,9 +250,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                     }
                     return res.status(404).json({ error: 'Chore or Tender not found' });
                 }
+                if (resource === 'telegram' && rest.length > 0 && rest[0] === 'generate-token') {
+                    const token = Math.floor(100000 + Math.random() * 900000).toString(); // 6-digit token
+                    data.config.telegramLinkingToken = token;
+                    data.config.telegramLinkingTokenTimestamp = Date.now();
+                    await setInstanceData(syncId, data);
+                    return res.status(200).json({ token });
+                }
                 break;
             
             case 'PUT':
+                if (resource === 'config') {
+                    const updatedConfig = req.body as Partial<Config>;
+                    data.config = { ...data.config, ...updatedConfig };
+                    await setInstanceData(syncId, data);
+                    return res.status(200).json(data.config);
+                }
                 if (resource === 'chores' && rest.length > 0) {
                     const choreId = rest[0];
                     const updatedChoreData = req.body as Partial<Chore>;
