@@ -959,54 +959,60 @@ function LeaderboardComponent() {
 
   // Filter and sort leaderboard data
   const processedData = React.useMemo(() => {
-    if (!leaderboardData) return [];
-    
-    let filteredData = leaderboardData.map(entry => {
-        if (filterPeriod !== 'all') {
-            const score = entry.score || { totalPoints: 0, completionCount: 0, lastActivity: 0, tenderId: '', name: '' };
-            const recentCompletions = entry.recentCompletions || [];
-            const cutoffTime = Date.now() - (filterPeriod === '7d' ? 7 * 24 * 60 * 60 * 1000 : 30 * 24 * 60 * 60 * 1000);
-            
-            const filteredCompletions = recentCompletions.filter(c => c.timestamp > cutoffTime);
-            
-            const newScoreData = filteredCompletions.reduce((acc, completion) => {
-                acc.totalPoints += completion.points || 0;
-                if (completion.timestamp > acc.lastActivity) {
-                    acc.lastActivity = completion.timestamp;
-                }
-                return acc;
-            }, { totalPoints: 0, lastActivity: 0 });
+    if (!leaderboardData || leaderboardData.length === 0) return [];
 
-            return {
-                ...entry,
-                score: { 
-                    tenderId: score.tenderId,
-                    name: score.name,
-                    totalPoints: newScoreData.totalPoints, 
-                    completionCount: filteredCompletions.length,
-                    lastActivity: newScoreData.lastActivity
-                },
-                recentCompletions: filteredCompletions
-            };
+    // Create a deep copy to ensure the original state is never mutated.
+    const dataCopy = JSON.parse(JSON.stringify(leaderboardData));
+
+    // 1. Filter the data based on the time period
+    const filteredData = dataCopy.map((entry: LeaderboardEntry) => {
+      if (filterPeriod === 'all') {
+        return entry; // Use original entry data for "All Time"
+      }
+
+      // For filtered views, recalculate the score based on the filtered completions
+      const score = entry.score;
+      const recentCompletions = entry.recentCompletions || [];
+      const cutoffTime = Date.now() - (filterPeriod === '7d' ? 7 * 24 * 60 * 60 * 1000 : 30 * 24 * 60 * 60 * 1000);
+      
+      const filteredCompletions = recentCompletions.filter(c => c.timestamp > cutoffTime);
+      
+      const newScore = filteredCompletions.reduce((acc, completion) => {
+        acc.totalPoints += completion.points || 0;
+        if (completion.timestamp > acc.lastActivity) {
+          acc.lastActivity = completion.timestamp;
         }
-        return entry;
+        return acc;
+      }, { totalPoints: 0, lastActivity: 0 });
+
+      // Return a new entry object with the recalculated score
+      return {
+        ...entry,
+        score: {
+          ...score,
+          totalPoints: newScore.totalPoints,
+          completionCount: filteredCompletions.length,
+          lastActivity: newScore.lastActivity
+        },
+        recentCompletions: filteredCompletions
+      };
     });
 
-    // Sort the data
-    filteredData.sort((a, b) => {
-        const scoreA = a.score || { totalPoints: 0, completionCount: 0 };
-        const scoreB = b.score || { totalPoints: 0, completionCount: 0 };
-        switch (sortBy) {
-            case 'completions':
-                return scoreB.completionCount - scoreA.completionCount;
-            case 'average':
-                const avgA = scoreA.completionCount > 0 ? scoreA.totalPoints / scoreA.completionCount : 0;
-                const avgB = scoreB.completionCount > 0 ? scoreB.totalPoints / scoreB.completionCount : 0;
-                return avgB - avgA;
-            case 'points':
-            default:
-                return scoreB.totalPoints - scoreA.totalPoints;
-        }
+    // 2. Sort the filtered data
+    filteredData.sort((a: LeaderboardEntry, b: LeaderboardEntry) => {
+      const scoreA = a.score || { totalPoints: 0, completionCount: 0 };
+      const scoreB = b.score || { totalPoints: 0, completionCount: 0 };
+      switch (sortBy) {
+        case 'completions':
+          return scoreB.completionCount - scoreA.completionCount;
+        case 'average':
+          const avgA = scoreA.completionCount > 0 ? scoreA.totalPoints / scoreA.completionCount : 0;
+          const avgB = scoreB.completionCount > 0 ? scoreB.totalPoints / scoreB.completionCount : 0;
+          return avgB - avgA;
+        case 'points':
+        default:
+          return scoreB.totalPoints - scoreA.totalPoints;
+      }
     });
 
     return filteredData;
