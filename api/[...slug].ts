@@ -26,6 +26,7 @@ interface HistoryEntry {
   tender: string;
   timestamp: number;
   points: number;
+  notes?: string | null;
 }
 
 interface Config {
@@ -185,6 +186,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                             tender: tender.name,
                             timestamp: timestamp,
                             points: chore.points,
+                            notes: notes || null,
                         };
 
                         // Prepend to history and trim if necessary

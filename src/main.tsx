@@ -39,8 +39,8 @@ interface Tender {
 interface HistoryEntry {
   id: string;
   timestamp: number;
-  person: string;
-  chore_id: string;
+  chore: string;
+  tender: string;
   notes: string | null;
   points: number;
 }
@@ -378,8 +378,8 @@ function KinobiView() {
     setError(null);
     try {
       const [choresResponse, configResponse] = await Promise.all([
-        fetch(`/api/${syncId}/chores`),
-        fetch(`/api/${syncId}/config`),
+        fetch(`/api/${syncId}/chores`, { cache: 'no-store' }),
+        fetch(`/api/${syncId}/config`, { cache: 'no-store' }),
       ]);
       if (!choresResponse.ok) {
         const errorText = await choresResponse.text();
@@ -920,7 +920,7 @@ function LeaderboardComponent() {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await fetch(`/api/${syncId}/leaderboard`);
+      const response = await fetch(`/api/${syncId}/leaderboard`, { cache: 'no-store' });
       if (!response.ok) {
         throw new Error(`Failed to fetch leaderboard data: ${response.statusText}`);
       }
@@ -1137,194 +1137,117 @@ function LeaderboardComponent() {
 
 function ShitHistoryComponent() {
   const syncId = useSyncId();
-  const [tenders, setTenders] = useState<Tender[]>([]);
-  const [chores, setChores] = useState<Chore[]>([]);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [showExactTimes, setShowExactTimes] = useState<Record<string, boolean>>({});
-  const [clickedTimestamp, setClickedTimestamp] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showExactTimes, setShowExactTimes] = useState<{ [key: string]: boolean }>({});
 
-  // Helper function to format relative time
   const formatRelativeTime = (timestamp: number) => {
-    const now = Date.now();
-    const diffMs = now - timestamp;
-    const diffSecs = Math.floor(diffMs / 1000);
-    const diffMins = Math.floor(diffSecs / 60);
-    const diffHours = Math.floor(diffMins / 60);
-    const diffDays = Math.floor(diffHours / 24);
-    const diffMonths = Math.floor(diffDays / 30);
-    const diffYears = Math.floor(diffDays / 365);
+    const now = new Date();
+    const past = new Date(timestamp);
+    const diffInSeconds = Math.floor((now.getTime() - past.getTime()) / 1000);
 
-    if (diffSecs < 60) return "just now";
-    if (diffMins < 60) return `${diffMins} ${diffMins === 1 ? "minute" : "minutes"} ago`;
-    if (diffHours < 24) return `${diffHours} ${diffHours === 1 ? "hour" : "hours"} ago`;
-    if (diffDays < 30) return `${diffDays} ${diffDays === 1 ? "day" : "days"} ago`;
-    if (diffMonths < 12) return `${diffMonths} ${diffMonths === 1 ? "month" : "months"} ago`;
-    return `${diffYears} ${diffYears === 1 ? "year" : "years"} ago`;
+    if (diffInSeconds < 60) return `${diffInSeconds}s ago`;
+    const diffInMinutes = Math.floor(diffInSeconds / 60);
+    if (diffInMinutes < 60) return `${diffInMinutes}m ago`;
+    const diffInHours = Math.floor(diffInMinutes / 60);
+    if (diffInHours < 24) return `${diffInHours}h ago`;
+    const diffInDays = Math.floor(diffInHours / 24);
+    return `${diffInDays}d ago`;
   };
 
-  // Toggle visibility of exact timestamp for an entry
   const toggleExactTime = (entryId: string) => {
-    setClickedTimestamp(entryId);
-    setTimeout(() => setClickedTimestamp(null), 500);
-
-    setShowExactTimes(prev => ({
-      ...prev,
-      [entryId]: !prev[entryId],
-    }));
+    setShowExactTimes(prev => ({ ...prev, [entryId]: !prev[entryId] }));
   };
 
-  // Get chore by ID
-  const getChoreById = (choreId: string): Chore | undefined => {
-    return chores.find((chore) => chore.id === choreId);
-  };
-
-  async function fetchDataInternal() {
+  const fetchDataInternal = useCallback(async () => {
     if (!syncId) return;
     setIsLoading(true);
-    setIsProcessing(true);
+    setError(null);
     try {
-      const [tendersResponse, choresResponse, historyResponse] = await Promise.all([
-        fetch(`/api/${syncId}/tenders`),
-        fetch(`/api/${syncId}/chores`),
-        fetch(`/api/${syncId}/history`),
-      ]);
-      if (!tendersResponse.ok) throw new Error(`Tenders fetch error! status: ${tendersResponse.status}`);
-      if (!choresResponse.ok) throw new Error(`Chores fetch error! status: ${choresResponse.status}`);
-      if (!historyResponse.ok) throw new Error(`History fetch error! status: ${historyResponse.status}`);
-
-      const tendersData = await tendersResponse.json();
-      const choresData = await choresResponse.json();
-      const historyData = await historyResponse.json();
-
-      setTenders(Array.isArray(tendersData) ? tendersData : []);
-      setChores(Array.isArray(choresData) ? choresData : []);
-      setHistory(Array.isArray(historyData) ? historyData : []);
-    } catch (error) {
-      console.error("Error fetching data for history:", error);
-      setTenders([]);
-      setChores([]);
-      setHistory([]);
+      const response = await fetch(`/api/${syncId}/history`, { cache: 'no-store' });
+      if (!response.ok) {
+        throw new Error(`Failed to fetch history: ${response.statusText}`);
+      }
+      const data = await response.json();
+      setHistory(data);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
-    setIsProcessing(false);
-  }
+  }, [syncId]);
 
   useEffect(() => {
     fetchDataInternal();
-  }, [syncId]);
+  }, [fetchDataInternal]);
 
   async function handleDeleteHistoryEntry(entryId: string) {
-    if (!syncId || !entryId) return;
-    if (!confirm("Are you sure you want to delete this history entry? This cannot be undone.")) return;
-    setIsProcessing(true);
+    if (!syncId) return;
+    // Optimistic deletion
+    const originalHistory = history;
+    setHistory(history.filter(entry => entry.id !== entryId));
+
     try {
-      await fetch(`/api/${syncId}/history/${entryId}`, { method: "DELETE" });
-      fetchDataInternal(); // Refresh
-    } catch (error) {
-      console.error("Error deleting history entry:", error);
-    } finally {
-      setIsProcessing(false);
+      const response = await fetch(`/api/${syncId}/history/${entryId}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) {
+        // Revert on failure
+        setHistory(originalHistory);
+        throw new Error('Failed to delete history entry');
+      }
+    } catch (err: any) {
+      setError(err.message);
+      setHistory(originalHistory); // Revert on error
     }
   }
 
-  if (isLoading) {
-    return (
-      <div className="text-2xl text-amber-700">
-        Loading history data...
-        <span>.</span>
-        <span>.</span>
-        <span>.</span>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="text-red-500 text-center">
-        Error: {error}
-      </div>
-    );
-  }
+  if (isLoading) return <div className="text-center p-8 text-amber-700">Loading history...</div>;
+  if (error) return <div className="text-center p-8 text-red-500">Error: {error}</div>;
+  if (history.length === 0) return <div className="text-center p-8 text-amber-600">No history recorded yet.</div>;
 
   return (
-    <div className={`${isProcessing ? "opacity-50 pointer-events-none" : ""}`}>
-      <section className="p-6 bg-gradient-to-br from-yellow-50 to-amber-50 rounded-lg shadow-lg max-w-md mx-auto border-2 border-amber-200">
-        <h3 className="text-xl mb-5 font-semibold text-amber-700">📜 Tending History</h3>
-        {history.length === 0
-          ? <p className="text-amber-600">No tending history yet for this Kinobi instance.</p>
-          : (
-            <div className="relative pl-8">
-              {/* Timeline vine */}
-              <div
-                className="absolute left-4 top-2 h-full w-0.5"
-                style={{
-                  backgroundImage: "linear-gradient(to bottom, #d97706 0%, #92400e 100%)",
-                  boxShadow: "0 0 8px rgba(217, 119, 6, 0.5)",
-                }}
-              >
+    <div className="bg-white/50 rounded-lg shadow-lg p-6 border border-amber-200">
+      <h2 className="text-2xl font-bold text-amber-800 mb-4">Tending History</h2>
+      <ul className="space-y-4">
+        {history.map(entry => (
+          <li key={entry.id} className="border-b border-amber-200 py-4">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-lg">
+                  <span className="font-semibold text-amber-800">{entry.tender}</span>
+                  <span> tended </span>
+                  <span className="font-semibold text-amber-800">{entry.chore}</span>
+                </p>
+                <p 
+                  className="text-sm text-amber-600 cursor-pointer"
+                  onClick={() => toggleExactTime(entry.id)}
+                >
+                  {showExactTimes[entry.id]
+                    ? new Date(entry.timestamp).toLocaleString()
+                    : formatRelativeTime(entry.timestamp)
+                  }
+                  <span className="ml-2 text-yellow-500">⭐ {entry.points}</span>
+                </p>
+                {entry.notes && (
+                  <p className="text-sm text-gray-600 mt-1 italic">"{entry.notes}"</p>
+                )}
               </div>
-
-              <ul className="space-y-10">
-                {history.map((entry: any) => (
-                  <li key={entry.id} className="relative timeline-entry">
-                    {/* Timeline dot */}
-                    <div className="absolute -left-8 top-0 h-5 w-5 rounded-full bg-amber-100 border-2 border-amber-500 flex items-center justify-center timeline-dot">
-                      <div className="h-2 w-2 rounded-full bg-amber-600 timeline-dot-inner"></div>
-                    </div>
-
-                    <div className="bg-amber-50 p-4 rounded-lg shadow-sm border border-amber-200">
-                      <div className="flex flex-col">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium text-amber-800 text-lg tracking-wide">{entry.person}</span>
-                          {(() => {
-                            const chore = getChoreById(entry.chore_id);
-                            return chore ? (
-                              <span className="text-sm bg-amber-200 px-2 py-0.5 rounded flex items-center gap-1">
-                                <span>{chore.icon}</span>
-                                <span>{chore.name}</span>
-                              </span>
-                            ) : null;
-                          })()}
-                        </div>
-
-                        {/* Clickable timestamp */}
-                        <button
-                          onClick={() => toggleExactTime(entry.id)}
-                          className={`text-left text-sm text-amber-600 hover:text-amber-800 mt-1 transition-colors duration-200`}
-                        >
-                          {showExactTimes[entry.id]
-                            ? new Date(entry.timestamp).toLocaleString()
-                            : formatRelativeTime(entry.timestamp)}
-                        </button>
-
-                        {/* Display notes if they exist */}
-                        {entry.notes && (
-                          <div className="mt-2 p-2 bg-yellow-100 rounded text-sm text-amber-800 border border-yellow-200">
-                            <div className="font-medium mb-1">Notes:</div>
-                            <p className="whitespace-pre-wrap">{entry.notes}</p>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="mt-3 flex justify-end">
-                        <button
-                          onClick={() => handleDeleteHistoryEntry(entry.id)}
-                          className="text-sm text-red-400 hover:text-red-600 transition-colors duration-200"
-                          disabled={isProcessing}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
+              <button
+                onClick={() => {
+                  if (window.confirm('Are you sure you want to delete this history entry? This cannot be undone.')) {
+                    handleDeleteHistoryEntry(entry.id);
+                  }
+                }}
+                className="text-red-500 hover:text-red-700 text-sm"
+              >
+                Delete
+              </button>
             </div>
-          )}
-      </section>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
