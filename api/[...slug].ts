@@ -44,10 +44,24 @@ interface KinobiData {
 // Helper functions
 async function getInstanceData(syncId: string): Promise<KinobiData> {
   const key = `kinobi:${syncId}`;
-  const data = await kv.get(key);
+  let data = await kv.get(key);
+
+  // If no data is found, create a new default instance and save it.
   if (!data) {
-    throw new Error('Sync instance not found');
+    const defaultData: KinobiData = {
+      chores: [],
+      tenders: [],
+      history: [],
+      config: {
+        warningThreshold: 0.75,
+        dangerThreshold: 0.9,
+        pointCycle: 30, // Default point cycle in days
+      },
+    };
+    await setInstanceData(syncId, defaultData);
+    data = defaultData;
   }
+  
   return data as KinobiData;
 }
 
