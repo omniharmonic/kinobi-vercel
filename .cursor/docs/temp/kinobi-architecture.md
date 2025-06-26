@@ -359,3 +359,81 @@ async function migrateData(dbPath) {
 - **Custom Domains**: Branded URLs
 
 This architecture provides a solid foundation for transitioning Kinobi to a modern, scalable, serverless platform while maintaining all existing functionality and user experience.
+
+# Kinobi Telegram Bot Architecture
+
+This document outlines the architecture for integrating a Telegram bot with the Kinobi application. The bot will provide proactive reminders and allow users to interact with the Kinobi system directly from Telegram.
+
+## 1. Core Components
+
+The architecture will consist of the following new and existing components:
+
+-   **Telegram Bot**: The user-facing interface within the Telegram app. Created and managed via Telegram's BotFather.
+-   **Vercel Serverless Function (Webhook Handler)**: A new endpoint (`api/telegram.ts`) to process incoming messages and callbacks from Telegram. This is the bot's "brain."
+-   **Vercel Cron Job (Status Checker)**: A new scheduled job (`api/cron/check-chores.ts`) that runs periodically to check for chore status changes and trigger reminders.
+-   **Kinobi Core API (`api/[...slug].ts`)**: The existing API will be used by the bot to fetch data (chores, tenders) and perform actions (log tending).
+-   **Vercel KV Store**: The existing database will be extended to store Telegram-specific configurations (bot tokens, channel IDs) and the last known status of each chore for reminder logic.
+-   **Kinobi Frontend (Settings Page)**: The existing settings UI will be updated to allow users to configure their Telegram integration.
+
+## 2. System Architecture Diagram
+
+```mermaid
+graph TD
+    subgraph "Telegram Platform"
+        User(Telegram User)
+        Bot(Kinobi Telegram Bot)
+    end
+
+    subgraph "Vercel Platform"
+        Webhook[API: /api/telegram.ts]
+        CronJob[CRON: /api/cron/check-chores.ts]
+        CoreAPI[API: /api/[...slug].ts]
+        KV(Vercel KV Store)
+        Frontend(Kinobi React App)
+    end
+
+    User -- Interacts with --> Bot
+    Bot -- Webhooks --> Webhook
+    Webhook -- Responds to --> Bot
+
+    Webhook -- Reads/Writes --> CoreAPI
+    CronJob -- Reads --> CoreAPI
+    CoreAPI -- Reads/Writes --> KV
+
+    CronJob -- Sends alerts to --> Bot
+
+    AdminUser[Admin User] -- Configures --> Frontend
+    Frontend -- Writes config --> CoreAPI
+```
+
+## 3. Data and Logic Flow
+
+### A. Interactive Chore Logging
+
+1.  A user sends a command (e.g., `/log`) to the **Kinobi Telegram Bot**.
+2.  Telegram sends a webhook to the **Vercel Serverless Function** (`api/telegram.ts`).
+3.  The function authenticates the request and calls the **Kinobi Core API** to fetch the list of chores for that user's `syncId`.
+4.  The function formats the chores as an inline keyboard and sends it back to the user via the Telegram API.
+5.  The user selects a chore. Telegram sends another webhook (a `callback_query`).
+6.  The function repeats the process for selecting a "Tender."
+7.  Once the chore and tender are selected, the function calls the `tend` endpoint on the **Kinobi Core API**.
+8.  The function sends a final confirmation message to the user in Telegram.
+
+### B. Overdue Chore Reminders
+
+1.  The **Vercel Cron Job** is triggered on a schedule (e.g., every hour).
+2.  The cron job's function (`api/cron/check-chores.ts`) executes.
+3.  It fetches all `syncId` instances that have Telegram notifications enabled from the **Vercel KV Store**.
+4.  For each instance, it fetches all chores via the **Kinobi Core API**.
+5.  For each chore, it calculates the current status using the `CountdownService` logic.
+6.  It compares the current status with the last known status stored in the **Vercel KV Store**.
+7.  If a chore's status has changed to `overdue`, it sends a notification message to the configured Telegram channel via the **Telegram Bot API**.
+8.  It updates the **Vercel KV Store** with the new chore statuses.
+
+## 4. Key Considerations
+
+-   **Security**: The Telegram Bot Token is highly sensitive and must be stored securely as a Vercel environment variable. The webhook endpoint should also validate that incoming requests are genuinely from Telegram.
+-   **Scalability**: Using serverless functions and Vercel's infrastructure ensures the solution is scalable and cost-effective.
+-   **State Management**: For interactive commands (like logging a chore), the bot will need to manage a simple state machine to track the user's progress through the conversation (e.g., "user has selected a chore, now waiting for a tender").
+-   **Error Handling**: The bot should provide clear feedback to the user in case of errors (e.g., API is down, invalid command).
+-   **Discoverability**: A new mechanism will be needed for the cron job to discover all `syncId`s that need to be checked. This will likely involve maintaining a separate set of `syncId`s in the KV store.

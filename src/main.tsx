@@ -916,15 +916,148 @@ function LeaderboardView() {
   if (!syncId) return <div>Loading sync information...</div>;
   return (
     <div className="w-full max-w-4xl mx-auto p-6">
-      <LeaderboardComponent />
+      <LeaderboardContainer />
     </div>
   );
 }
 
-function LeaderboardComponent() {
+// New Component: LeaderboardItem
+function LeaderboardItem({ entry, index }: { entry: LeaderboardEntry; index: number }) {
+  const score = entry.score || { totalPoints: 0, completionCount: 0, lastActivity: 0 };
+  const tender = entry.tender || { id: `unknown-${index}`, name: 'Unknown' };
+  const recentCompletions = entry.recentCompletions || [];
+
+  const pointsPerCompletion = score.completionCount > 0 ?
+    (score.totalPoints / score.completionCount).toFixed(1) : '0.0';
+
+  return (
+    <div
+      className={`bg-white rounded-lg p-4 shadow-md border-2 transition-all duration-200 hover:shadow-lg ${
+        index === 0 ? 'border-yellow-400 bg-gradient-to-r from-yellow-50 to-amber-50' :
+        index === 1 ? 'border-gray-400 bg-gradient-to-r from-gray-50 to-gray-100' :
+        index === 2 ? 'border-orange-400 bg-gradient-to-r from-orange-50 to-amber-50' :
+        'border-gray-200 hover:border-amber-300'
+      }`}
+    >
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <div className={`text-2xl font-bold flex items-center gap-2 ${
+            index === 0 ? 'text-yellow-600' :
+            index === 1 ? 'text-gray-600' :
+            index === 2 ? 'text-orange-600' :
+            'text-amber-600'
+          }`}>
+            {index === 0 && '🥇'}
+            {index === 1 && '🥈'}
+            {index === 2 && '🥉'}
+            {index > 2 && `#${entry.rank}`}
+          </div>
+          <div>
+            <h3 className="text-xl font-semibold text-amber-800 flex items-center gap-2">
+              {tender.name}
+              {index < 3 && (
+                <span className="text-xs bg-amber-200 px-2 py-1 rounded-full">
+                  Top Performer
+                </span>
+              )}
+            </h3>
+            <div className="flex items-center gap-4 text-sm text-amber-600">
+              <span>{score.completionCount} completions</span>
+              <span>•</span>
+              <span>{pointsPerCompletion} pts/completion</span>
+              {score.lastActivity > 0 &&
+                <>
+                  <span>•</span>
+                  <span>Last active {new Date(score.lastActivity).toLocaleDateString()}</span>
+                </>
+              }
+            </div>
+            {recentCompletions.length > 0 && (
+              <div className="mt-2 text-xs text-amber-500">
+                Recent: {recentCompletions.slice(0, 3).map((completion: HistoryEntry, i: number) => (
+                  <span key={completion.id}>
+                    {i > 0 && ', '}
+                    {new Date(completion.timestamp).toLocaleDateString()}
+                  </span>
+                ))}
+                {recentCompletions.length > 3 && ` +${recentCompletions.length - 3} more`}
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="text-right">
+          <div className="text-2xl font-bold text-amber-700">{score.totalPoints}</div>
+          <div className="text-sm text-amber-500">Total Points</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// New Component: LeaderboardList
+function LeaderboardList({ entries }: { entries: LeaderboardEntry[] }) {
+  if (entries.length === 0) {
+    return <p className="text-amber-600 text-center">No scoring data available for the selected period. Complete some chores to get started!</p>;
+  }
+  return (
+    <div className="space-y-4">
+      {entries.map((entry, index) => (
+        <LeaderboardItem key={entry.tender.id} entry={entry} index={index} />
+      ))}
+    </div>
+  );
+}
+
+// New Component: LeaderboardControls
+function LeaderboardControls({
+  filterPeriod,
+  setFilterPeriod,
+  sortBy,
+  setSortBy,
+}: {
+  filterPeriod: 'all' | '7d' | '30d';
+  setFilterPeriod: (value: 'all' | '7d' | '30d') => void;
+  sortBy: 'points' | 'completions' | 'average';
+  setSortBy: (value: 'points' | 'completions' | 'average') => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-4 mb-6 justify-center">
+      <div className="flex items-center gap-2">
+        <label htmlFor="leaderboard-period" className="text-sm font-medium text-amber-700">Period:</label>
+        <select
+          id="leaderboard-period"
+          name="leaderboard-period"
+          value={filterPeriod}
+          onChange={(e) => setFilterPeriod(e.target.value as 'all' | '7d' | '30d')}
+          className="border border-amber-300 rounded px-2 py-1 text-sm bg-yellow-50 focus:ring-amber-500 focus:border-amber-500"
+        >
+          <option value="all">All Time</option>
+          <option value="7d">Last 7 Days</option>
+          <option value="30d">Last 30 Days</option>
+        </select>
+      </div>
+      <div className="flex items-center gap-2">
+        <label htmlFor="leaderboard-sort" className="text-sm font-medium text-amber-700">Sort by:</label>
+        <select
+          id="leaderboard-sort"
+          name="leaderboard-sort"
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value as 'points' | 'completions' | 'average')}
+          className="border border-amber-300 rounded px-2 py-1 text-sm bg-yellow-50 focus:ring-amber-500 focus:border-amber-500"
+        >
+          <option value="points">Total Points</option>
+          <option value="completions">Completions</option>
+          <option value="average">Points per Completion</option>
+        </select>
+      </div>
+    </div>
+  );
+}
+
+// Renamed and refactored from LeaderboardComponent to LeaderboardContainer
+function LeaderboardContainer() {
   const syncId = useSyncId();
   const [leaderboardData, setLeaderboardData] = useState<LeaderboardEntry[]>([]);
-  const [processedData, setProcessedData] = useState<LeaderboardEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [filterPeriod, setFilterPeriod] = useState<'all' | '7d' | '30d'>('all');
   const [sortBy, setSortBy] = useState<'points' | 'completions' | 'average'>('points');
@@ -936,246 +1069,54 @@ function LeaderboardComponent() {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await fetch(`/api/${syncId}/leaderboard`, { cache: 'no-store' });
+      const response = await fetch(`/api/${syncId}/leaderboard?period=${filterPeriod}&sortBy=${sortBy}`, { cache: 'no-store' });
       if (!response.ok) {
         throw new Error(`Failed to fetch leaderboard data: ${response.statusText}`);
       }
       const data: LeaderboardEntry[] = await response.json();
-      
-      // Assign ranks on the client side after fetching
-      const sortedByPoints = [...data].sort((a, b) => (b.score?.totalPoints || 0) - (a.score?.totalPoints || 0));
-      const rankedData = sortedByPoints.map((entry, index) => ({
-        ...entry,
-        rank: index + 1,
-      }));
-      
-      setLeaderboardData(rankedData);
+      setLeaderboardData(data);
     } catch (err: any) {
       setError(err.message);
     } finally {
       setIsLoading(false);
     }
-  }, [syncId]);
+  }, [syncId, filterPeriod, sortBy]);
 
   useEffect(() => {
     fetchLeaderboardData();
   }, [fetchLeaderboardData]);
 
-  // Process data when filters or base data change
-  useEffect(() => {
-    if (!leaderboardData || leaderboardData.length === 0) {
-      setProcessedData([]);
-      return;
-    }
-
-    // Create a deep copy to ensure the original state is never mutated.
-    const dataCopy = JSON.parse(JSON.stringify(leaderboardData));
-
-    // 1. Filter the data based on the time period
-    const filteredData = dataCopy.map((entry: LeaderboardEntry) => {
-      if (filterPeriod === 'all') {
-        return entry; // Use original entry data for "All Time"
-      }
-
-      // For filtered views, recalculate the score from scratch based on the filtered completions.
-      const recentCompletions = entry.recentCompletions || [];
-      const cutoffTime = Date.now() - (filterPeriod === '7d' ? 7 * 24 * 60 * 60 * 1000 : 30 * 24 * 60 * 60 * 1000);
-      
-      const filteredCompletions = recentCompletions.filter((c: HistoryEntry) => c.timestamp > cutoffTime);
-
-      const newScore = filteredCompletions.reduce((acc, completion) => {
-        acc.totalPoints += completion.points || 0;
-        if (completion.timestamp > acc.lastActivity) {
-          acc.lastActivity = completion.timestamp;
-        }
-        return acc;
-      }, { totalPoints: 0, completionCount: 0, lastActivity: 0 });
-
-      // Return a new entry object with a completely new score object
-      return {
-        ...entry,
-        score: {
-          // Carry over non-calculated properties from the original score
-          tenderId: entry.score.tenderId,
-          name: entry.score.name,
-          // Apply the newly calculated values
-          totalPoints: newScore.totalPoints,
-          completionCount: filteredCompletions.length,
-          lastActivity: newScore.lastActivity,
-        },
-      };
-    });
-
-    // 2. Sort the filtered data using a non-mutating approach
-    const sortedData = [...filteredData].sort((a: LeaderboardEntry, b: LeaderboardEntry) => {
-      const scoreA = a.score || { totalPoints: 0, completionCount: 0 };
-      const scoreB = b.score || { totalPoints: 0, completionCount: 0 };
-      switch (sortBy) {
-        case 'completions':
-          return scoreB.completionCount - scoreA.completionCount;
-        case 'average':
-          const avgA = scoreA.completionCount > 0 ? scoreA.totalPoints / scoreA.completionCount : 0;
-          const avgB = scoreB.completionCount > 0 ? scoreB.totalPoints / scoreB.completionCount : 0;
-          return avgB - avgA;
-        case 'points':
-        default:
-          return scoreB.totalPoints - scoreA.totalPoints;
-      }
-    });
-
-    setProcessedData(sortedData);
-  }, [leaderboardData, filterPeriod, sortBy]);
-
-  // Scroll to top when data changes
   useEffect(() => {
     if (leaderboardRef.current) {
       leaderboardRef.current.scrollTop = 0;
     }
-  }, [processedData]);
-
-  if (isLoading) {
-    return (
-      <div className="text-2xl text-amber-700 text-center">
-        Loading leaderboard...
-        <span>.</span>
-        <span>.</span>
-        <span>.</span>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="text-red-500 text-center">
-        Error: {error}
-      </div>
-    );
-  }
+  }, [leaderboardData]);
 
   return (
     <div ref={leaderboardRef} className="bg-gradient-to-br from-yellow-50 to-amber-50 rounded-lg shadow-lg p-6 border-2 border-amber-200">
       <h2 className="text-3xl font-bold text-amber-800 mb-6 text-center">🏆 Leaderboard</h2>
       
-      {/* Filter and Sort Controls */}
-      <div className="flex flex-wrap gap-4 mb-6 justify-center">
-        <div className="flex items-center gap-2">
-          <label htmlFor="leaderboard-period" className="text-sm font-medium text-amber-700">Period:</label>
-          <select 
-            id="leaderboard-period"
-            name="leaderboard-period"
-            value={filterPeriod} 
-            onChange={(e) => setFilterPeriod(e.target.value as 'all' | '7d' | '30d')}
-            className="border border-amber-300 rounded px-2 py-1 text-sm bg-yellow-50 focus:ring-amber-500 focus:border-amber-500"
-          >
-            <option value="all">All Time</option>
-            <option value="7d">Last 7 Days</option>
-            <option value="30d">Last 30 Days</option>
-          </select>
-        </div>
-        
-        <div className="flex items-center gap-2">
-          <label htmlFor="leaderboard-sort" className="text-sm font-medium text-amber-700">Sort by:</label>
-          <select 
-            id="leaderboard-sort"
-            name="leaderboard-sort"
-            value={sortBy} 
-            onChange={(e) => setSortBy(e.target.value as 'points' | 'completions' | 'average')}
-            className="border border-amber-300 rounded px-2 py-1 text-sm bg-yellow-50 focus:ring-amber-500 focus:border-amber-500"
-          >
-            <option value="points">Total Points</option>
-            <option value="completions">Completions</option>
-            <option value="average">Points per Completion</option>
-          </select>
-        </div>
-      </div>
+      <LeaderboardControls
+        filterPeriod={filterPeriod}
+        setFilterPeriod={setFilterPeriod}
+        sortBy={sortBy}
+        setSortBy={setSortBy}
+      />
       
-      {processedData.length === 0 ? (
-        <p className="text-amber-600 text-center">No scoring data available for the selected period. Complete some chores to get started!</p>
+      {isLoading ? (
+        <div className="text-2xl text-amber-700 text-center">
+          Loading leaderboard...
+          <span>.</span>
+          <span>.</span>
+          <span>.</span>
+        </div>
+      ) : error ? (
+        <div className="text-red-500 text-center">
+          Error: {error}
+        </div>
       ) : (
-        <div className="space-y-4">
-          {processedData.map((entry: LeaderboardEntry, index: number) => {
-            const score = entry.score || { totalPoints: 0, completionCount: 0, lastActivity: 0 };
-            const tender = entry.tender || { id: `unknown-${index}`, name: 'Unknown' };
-            const recentCompletions = entry.recentCompletions || [];
-            
-            const pointsPerCompletion = score.completionCount > 0 ? 
-              (score.totalPoints / score.completionCount).toFixed(1) : '0.0';
-            
-            return (
-              <div 
-                key={tender.id} 
-                className={`bg-white rounded-lg p-4 shadow-md border-2 transition-all duration-200 hover:shadow-lg ${
-                  index === 0 ? 'border-yellow-400 bg-gradient-to-r from-yellow-50 to-amber-50' :
-                  index === 1 ? 'border-gray-400 bg-gradient-to-r from-gray-50 to-gray-100' :
-                  index === 2 ? 'border-orange-400 bg-gradient-to-r from-orange-50 to-amber-50' :
-                  'border-gray-200 hover:border-amber-300'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className={`text-2xl font-bold flex items-center gap-2 ${
-                      index === 0 ? 'text-yellow-600' :
-                      index === 1 ? 'text-gray-600' :
-                      index === 2 ? 'text-orange-600' :
-                      'text-amber-600'
-                    }`}>
-                      {index === 0 && '🥇'}
-                      {index === 1 && '🥈'}
-                      {index === 2 && '🥉'}
-                      {index > 2 && `#${index + 1}`}
-                    </div>
-                    <div>
-                      <h3 className="text-xl font-semibold text-amber-800 flex items-center gap-2">
-                        {tender.name}
-                        {index < 3 && (
-                          <span className="text-xs bg-amber-200 px-2 py-1 rounded-full">
-                            Top Performer
-                          </span>
-                        )}
-                      </h3>
-                      <div className="flex items-center gap-4 text-sm text-amber-600">
-                        <span>{score.completionCount} completions</span>
-                        <span>•</span>
-                        <span>{pointsPerCompletion} pts/completion</span>
-                        {score.lastActivity > 0 &&
-                          <>
-                            <span>•</span>
-                            <span>Last active {new Date(score.lastActivity).toLocaleDateString()}</span>
-                          </>
-                        }
-                      </div>
-                      
-                      {/* Recent completions preview */}
-                      {recentCompletions.length > 0 && (
-                        <div className="mt-2 text-xs text-amber-500">
-                          Recent: {recentCompletions.slice(0, 3).map((completion: HistoryEntry, i: number) => (
-                            <span key={completion.id}>
-                              {i > 0 && ', '}
-                              {new Date(completion.timestamp).toLocaleDateString()}
-                            </span>
-                          ))}
-                          {recentCompletions.length > 3 && ` +${recentCompletions.length - 3} more`}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-2xl font-bold text-amber-700">{score.totalPoints}</div>
-                    <div className="text-sm text-amber-600">points</div>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        <LeaderboardList entries={leaderboardData} />
       )}
-      
-      <div className="mt-6 text-center text-sm text-amber-600">
-        <p>Points are awarded for completing chores. Keep up the great work! 🌟</p>
-        <p className="mt-1 text-xs opacity-75">
-          Use the filters above to view performance over different time periods
-        </p>
-      </div>
     </div>
   );
 }
