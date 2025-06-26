@@ -1,6 +1,6 @@
 import React, { useState, useEffect, createContext, useContext, useCallback } from 'react';
 import ReactDOM from 'react-dom/client';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Outlet, useOutletContext } from 'react-router-dom';
 import {
   Link,
   useLocation,
@@ -70,6 +70,14 @@ interface LeaderboardEntry {
   recentCompletions: HistoryEntry[];  // Last 5 completions
 }
 
+// --- New Type for Outlet Context ---
+interface PwaUpdateContextType {
+  updateAvailable: boolean;
+  onUpdate: () => void;
+  currentClientVersion: string | null;
+}
+// --- End New Type ---
+
 // --- Sync ID Management ---
 const LOCAL_STORAGE_SYNC_ID_KEY = "kinobi_sync_id_valtown";
 
@@ -98,6 +106,30 @@ function setSyncIdInLocalStorage(syncId: string) {
 }
 // --- End Sync ID Management ---
 
+// --- New Component: RootRedirector ---
+// Handles the initial load at the root path "/"
+function RootRedirector() {
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    let syncId = getSyncIdFromLocalStorage();
+    if (!syncId) {
+      syncId = generateNewSyncIdInternal();
+      setSyncIdInLocalStorage(syncId);
+    }
+    // Redirect to the appropriate syncId-based URL
+    navigate(`/${syncId}`, { replace: true });
+  }, [navigate]);
+
+  // Render a loading state while redirecting
+  return (
+    <div className="flex flex-col min-h-screen bg-gradient-to-br from-amber-100 via-yellow-50 to-orange-100 items-center justify-center text-2xl">
+      {"Initializing Kinobi..."}
+    </div>
+  );
+}
+// --- End New Component ---
+
 // Context for Sync ID
 const SyncIdContext = createContext<string | null>(null);
 
@@ -105,89 +137,44 @@ function useSyncId() {
   return useContext(SyncIdContext);
 }
 
-// Main App Component
-function App() {
-  const location = useLocation();
+// --- New Component: KinobiLayout ---
+// This component replaces the old App component's layout responsibilities.
+// It handles the main UI shell, context providing, and PWA updates.
+function KinobiLayout() {
+  const { syncId } = useParams<{ syncId: string }>();
   const navigate = useNavigate();
-  const { syncId: urlSyncId } = useParams<{ syncId: string }>(); // Explicitly get syncId from params
-  const [syncId, setSyncId] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [currentClientVersion, setCurrentClientVersion] = useState<string | null>(null);
   const refreshingRef = React.useRef(false);
 
+  // Effect for PWA updates and service worker management
   useEffect(() => {
-    // This effect runs once on mount to determine the syncId and set up the app.
-    const initializeApp = () => {
-      if (typeof window !== "undefined" && window.PWA_CURRENT_APP_VERSION) {
-        setCurrentClientVersion(window.PWA_CURRENT_APP_VERSION);
-      }
-
-      let resolvedSyncId = sanitizeSyncId(urlSyncId || null); // Handle undefined case
-
-      if (!resolvedSyncId) {
-        const storedSyncId = getSyncIdFromLocalStorage(); // Already sanitized
-        if (storedSyncId) {
-          resolvedSyncId = storedSyncId;
-          // If we have a stored ID but are on the root path, redirect.
-          if (location.pathname === '/') {
-            navigate(`/${resolvedSyncId}`, { replace: true });
-            return; // Redirecting, so we'll re-run this effect on the new page.
-          }
-        } else {
-          // No URL syncId and no stored syncId, so generate a new one.
-          resolvedSyncId = generateNewSyncIdInternal();
-          setSyncIdInLocalStorage(resolvedSyncId);
-          navigate(`/${resolvedSyncId}`, { replace: true });
-          return; // Redirecting.
-        }
-      }
-      
-      // If we have a syncId from the URL, make sure it's stored for next time.
-      if (urlSyncId) {
-        setSyncIdInLocalStorage(urlSyncId);
-      }
-
-      setSyncId(resolvedSyncId || getSyncIdFromLocalStorage());
-      setIsLoading(false);
-    };
-
-    initializeApp();
+    if (typeof window !== "undefined" && window.PWA_CURRENT_APP_VERSION) {
+      setCurrentClientVersion(window.PWA_CURRENT_APP_VERSION);
+    }
 
     if (!("serviceWorker" in navigator)) {
       return;
     }
 
-    // Register the service worker
     navigator.serviceWorker.register('/sw.js')
       .then(registration => {
-        console.log('Service Worker registered successfully:', registration);
-        
-        // Initial check for a waiting worker
-        if (registration.waiting) {
-          setUpdateAvailable(true);
-        }
-
-        // Listen for new workers installing
+        if (registration.waiting) setUpdateAvailable(true);
         registration.addEventListener("updatefound", () => {
           const newWorker = registration.installing;
-          if (!newWorker) return;
-
-          newWorker.addEventListener("statechange", () => {
-            if (newWorker.state === "installed") {
-              // A new worker has installed. Check if it's now waiting.
-              if (registration.waiting) {
+          if (newWorker) {
+            newWorker.addEventListener("statechange", () => {
+              if (newWorker.state === "installed" && registration.waiting) {
                 setUpdateAvailable(true);
               }
-            }
-          });
+            });
+          }
         });
       })
-      .catch(error => {
-        console.error('Service Worker registration failed:', error);
-      });
+      .catch(error => console.error('Service Worker registration failed:', error));
 
-    // 3. Listen for controller change (new SW has activated)
     const controllerChangeHandler = () => {
       if (refreshingRef.current) return;
       refreshingRef.current = true;
@@ -195,18 +182,16 @@ function App() {
     };
     navigator.serviceWorker.addEventListener("controllerchange", controllerChangeHandler);
 
-    // Cleanup
     return () => {
       navigator.serviceWorker.removeEventListener("controllerchange", controllerChangeHandler);
     };
-  }, [urlSyncId, location.pathname, navigate]);
+  }, []);
 
   const handleUpdate = () => {
     if (!("serviceWorker" in navigator)) {
       window.location.reload();
       return;
     }
-
     navigator.serviceWorker.ready.then(registration => {
       if (registration && registration.waiting) {
         registration.waiting.postMessage({ type: "SKIP_WAITING" });
@@ -215,62 +200,59 @@ function App() {
       }
     });
   };
+  
+  // Store the syncId from the URL in local storage for future visits
+  useEffect(() => {
+    if (syncId) {
+      setSyncIdInLocalStorage(syncId);
+    }
+  }, [syncId]);
 
-  if (isLoading) {
-    return (
-      <div className="flex flex-col min-h-screen bg-gradient-to-br from-amber-100 via-yellow-50 to-orange-100 items-center justify-center text-2xl">
-        {"Initializing Kinobi..."}
-        <span>.</span>
-        <span>.</span>
-        <span>.</span>
-      </div>
-    );
-  }
-
-  // If there's no syncId after loading, we can't proceed.
+  // Safeguard against missing syncId
   if (!syncId) {
-    return (
-      <div className="p-8 text-center text-lg text-red-600">
-        Could not determine a sync ID. Please check the URL or clear your local storage.
-      </div>
-    );
+    return <Navigate to="/" replace />;
   }
 
   return (
     <SyncIdContext.Provider value={syncId}>
       <div className="flex flex-col h-screen bg-gradient-to-br from-amber-100 via-yellow-50 to-orange-100">
-        <header className="bg-[#FAF9F6] p-4 shadow-md flex-shrink-0 flex items-center justify-between text-[#222]">
+        <header className="relative bg-[#FAF9F6] p-4 shadow-md flex-shrink-0 flex items-center justify-between text-[#222]">
           <div className="flex items-center gap-4 cursor-pointer" onClick={() => navigate(`/${syncId}`)}> 
             <img src="/kinobi_alpha.gif" alt="Kinobi" className="w-16 h-16 kinobi-logo-float" />
             <span className="text-4xl font-bold tracking-tight select-none">Kinobi</span>
           </div>
-          <nav className="flex gap-6 text-lg items-center">
-            <Link to={`/${syncId}/history`} className="hover:text-amber-700 transition-colors">History</Link>
-            <Link to={`/${syncId}/leaderboard`} className="hover:text-amber-700 transition-colors">Leaderboard</Link>
-            <Link to={`/${syncId}/settings`} className="hover:text-amber-700 transition-colors">Settings</Link>
+          
+          {/* Desktop Navigation */}
+          <nav className="hidden md:flex gap-6 text-lg items-center">
+            <Link to="history" className="hover:text-amber-700 transition-colors">History</Link>
+            <Link to="leaderboard" className="hover:text-amber-700 transition-colors">Leaderboard</Link>
+            <Link to="settings" className="hover:text-amber-700 transition-colors">Settings</Link>
           </nav>
+          
+          {/* Mobile Menu Button */}
+          <div className="md:hidden">
+            <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="text-gray-600 hover:text-gray-800 focus:outline-none">
+              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={isMenuOpen ? "M6 18L18 6M6 6l12 12" : "M4 6h16M4 12h16m-7 6h7"}></path>
+              </svg>
+            </button>
+          </div>
+
+          {/* Mobile Menu Dropdown */}
+          {isMenuOpen && (
+            <nav className="absolute top-full right-0 mt-2 w-48 bg-white rounded-md shadow-lg p-2 md:hidden z-10">
+              <Link to="history" onClick={() => setIsMenuOpen(false)} className="block px-4 py-2 text-gray-800 hover:bg-amber-100 rounded">History</Link>
+              <Link to="leaderboard" onClick={() => setIsMenuOpen(false)} className="block px-4 py-2 text-gray-800 hover:bg-amber-100 rounded">Leaderboard</Link>
+              <Link to="settings" onClick={() => setIsMenuOpen(false)} className="block px-4 py-2 text-gray-800 hover:bg-amber-100 rounded">Settings</Link>
+            </nav>
+          )}
         </header>
+
         <main className="flex-grow overflow-auto bg-[#FAF9F6] text-[#222]">
-          <Routes>
-            <Route path="/status" element={<StatusView />} />
-            <Route path="/:syncId" element={<KinobiView />} />
-            <Route path="/:syncId/history" element={<HistoryView />} />
-            <Route path="/:syncId/leaderboard" element={<LeaderboardView />} />
-            <Route
-              path="/:syncId/settings"
-              element={
-                <SyncSettingsView
-                  updateAvailable={updateAvailable}
-                  onUpdate={handleUpdate}
-                  currentClientVersion={currentClientVersion}
-                />
-              }
-            />
-            {/* The root path is handled by the useEffect, but this is a good fallback */}
-            <Route path="/" element={<div className="p-8 text-center text-lg">Loading...</div>} />
-            <Route path="*" element={<Navigate to={`/${syncId}`} replace />} />
-          </Routes>
+           {/* Nested routes will be rendered here */}
+           <Outlet context={{ updateAvailable, onUpdate, currentClientVersion }} />
         </main>
+
         <footer className="bg-[#FAF9F6] p-4 text-center text-[#222] flex-shrink-0 border-t border-amber-100">
           <span className="text-lg">made with 🖤 at The Life House</span>
         </footer>
@@ -278,6 +260,12 @@ function App() {
     </SyncIdContext.Provider>
   );
 }
+// --- End New Component ---
+
+// Main App Component (Now removed and replaced by the new structure)
+/*
+function App() { ... } // The old App component is deleted
+*/
 
 // +++ START NEW COMPONENT +++
 // Simple status component for debugging deployment
@@ -331,15 +319,43 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
   }
 }
 
-// Wrapped App with Router
+// Wrapped App with Router - This is now the main component that defines routes
 function RoutedApp() {
   return (
     <BrowserRouter>
       <ErrorBoundary>
-        <App />
+        <Routes>
+          <Route path="/" element={<RootRedirector />} />
+          <Route path="/status" element={<StatusView />} />
+          <Route path="/:syncId/*" element={<KinobiLayout />}>
+            <Route index element={<KinobiView />} />
+            <Route path="history" element={<HistoryView />} />
+            <Route path="leaderboard" element={<LeaderboardView />} />
+            <Route
+              path="settings"
+              element={
+                <SyncSettingsViewRouter />
+              }
+            />
+          </Route>
+          {/* A better catch-all to redirect invalid paths to the root */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
       </ErrorBoundary>
     </BrowserRouter>
   );
+}
+
+// A new helper component to pass context from the Outlet to SyncSettingsView
+function SyncSettingsViewRouter() {
+    const { updateAvailable, onUpdate, currentClientVersion } = useOutletContext<any>();
+    return (
+        <SyncSettingsView 
+            updateAvailable={updateAvailable}
+            onUpdate={onUpdate}
+            currentClientVersion={currentClientVersion}
+        />
+    )
 }
 
 function KinobiView() {
