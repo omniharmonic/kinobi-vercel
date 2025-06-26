@@ -977,31 +977,32 @@ function LeaderboardComponent() {
         return entry; // Use original entry data for "All Time"
       }
 
-      // For filtered views, recalculate the score based on the filtered completions
-      const score = entry.score;
+      // For filtered views, recalculate the score from scratch based on the filtered completions.
       const recentCompletions = entry.recentCompletions || [];
       const cutoffTime = Date.now() - (filterPeriod === '7d' ? 7 * 24 * 60 * 60 * 1000 : 30 * 24 * 60 * 60 * 1000);
       
       const filteredCompletions = recentCompletions.filter((c: HistoryEntry) => c.timestamp > cutoffTime);
-      
+
       const newScore = filteredCompletions.reduce((acc, completion) => {
         acc.totalPoints += completion.points || 0;
         if (completion.timestamp > acc.lastActivity) {
           acc.lastActivity = completion.timestamp;
         }
         return acc;
-      }, { totalPoints: 0, lastActivity: 0 });
+      }, { totalPoints: 0, completionCount: 0, lastActivity: 0 });
 
-      // Return a new entry object with the recalculated score
+      // Return a new entry object with a completely new score object
       return {
         ...entry,
         score: {
-          ...score,
+          // Carry over non-calculated properties from the original score
+          tenderId: entry.score.tenderId,
+          name: entry.score.name,
+          // Apply the newly calculated values
           totalPoints: newScore.totalPoints,
           completionCount: filteredCompletions.length,
-          lastActivity: newScore.lastActivity
+          lastActivity: newScore.lastActivity,
         },
-        recentCompletions: filteredCompletions
       };
     });
 
