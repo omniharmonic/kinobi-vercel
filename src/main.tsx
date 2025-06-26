@@ -450,7 +450,6 @@ function KinobiView() {
 
 function ChoreTile({ chore, config, onTended, animationIndex = 0 }: { chore: Chore; config: ChoreConfig; onTended: () => void; animationIndex?: number }) {
   const syncId = useSyncId();
-  const [isTending, setIsTending] = useState(false);
   const [countdownState, setCountdownState] = useState<CountdownState | null>(null);
   const [showModal, setShowModal] = useState(false);
 
@@ -473,7 +472,6 @@ function ChoreTile({ chore, config, onTended, animationIndex = 0 }: { chore: Cho
   }, [chore, config]);
 
   const handleTendingClick = () => {
-    setIsTending(true);
     setShowModal(true);
   };
 
@@ -539,84 +537,71 @@ function ChoreTile({ chore, config, onTended, animationIndex = 0 }: { chore: Cho
 
   return (
     <div className="text-center flex flex-col items-center w-56">
-      {isTending
-        ? (
-          <div className="text-2xl text-amber-700">
-            Assembling bits
-            <span>.</span>
-            <span>.</span>
-            <span>.</span>
-          </div>
-        )
-        : (
-          <>
-            {/* Progress Ring with Chore Icon */}
-            <div className="mb-4 relative">
-              {countdownState ? (
-                <ProgressRing
-                  progress={Math.min(countdownState.progress, 1)} // Cap at 1 for visual consistency
-                  status={countdownState.status}
-                  size={140}
-                  strokeWidth={6}
-                >
-                  <div
-                    className={`text-7xl cursor-pointer ${animationClass} flex items-center justify-center transition-transform duration-200 hover:scale-105`}
-                    onClick={handleTendingClick}
-                  >
-                    {chore.icon}
-                  </div>
-                </ProgressRing>
-              ) : (
-                <div
-                  className={`text-7xl cursor-pointer ${animationClass} transition-transform duration-200 hover:scale-105 flex items-center justify-center`}
-                  onClick={handleTendingClick}
-                  style={{ width: 140, height: 140 }}
-                >
-                  {chore.icon}
-                </div>
-              )}
-            </div>
-
-            {/* Chore Name */}
-            <h3 className="text-2xl font-semibold text-amber-800 mb-3 h-16 flex items-center justify-center leading-tight">
-              {chore.name}
-            </h3>
-
-            {/* Countdown Status and Time Display */}
-            {countdownState && (
-              <div className="mb-2">
-                <TimeDisplay countdownState={countdownState} format="full" />
+      <>
+        {/* Progress Ring with Chore Icon */}
+        <div className="mb-4 relative">
+          {countdownState ? (
+            <ProgressRing
+              progress={Math.min(countdownState.progress, 1)} // Cap at 1 for visual consistency
+              status={countdownState.status}
+              size={140}
+              strokeWidth={6}
+            >
+              <div
+                className={`text-7xl cursor-pointer ${animationClass} flex items-center justify-center transition-transform duration-200 hover:scale-105`}
+                onClick={handleTendingClick}
+              >
+                {chore.icon}
               </div>
-            )}
-
-            {/* Last Tended Info */}
-            <div className={`text-sm ${textColorClass} leading-tight opacity-75`}>
-              {chore.lastCompleted === null || typeof chore.lastCompleted === "undefined" 
-                ? "no tending logged"
-                : `Last: ${getTimeSinceLastTending()}${chore.lastTender ? ` by ${chore.lastTender}` : ""}`
-              }
+            </ProgressRing>
+          ) : (
+            <div
+              className={`text-7xl cursor-pointer ${animationClass} transition-transform duration-200 hover:scale-105 flex items-center justify-center`}
+              onClick={handleTendingClick}
+              style={{ width: 140, height: 140 }}
+            >
+              {chore.icon}
             </div>
+          )}
+        </div>
 
-            {/* Points indicator */}
-            <div className="mt-2 text-xs text-amber-600 flex items-center gap-1">
-              <span>⭐</span>
-              <span>{chore.points} points</span>
-              <span>•</span>
-              <span>🔄 {chore.cycleDuration}h cycle</span>
-            </div>
-          </>
+        {/* Chore Name */}
+        <h3 className="text-2xl font-semibold text-amber-800 mb-3 h-16 flex items-center justify-center leading-tight">
+          {chore.name}
+        </h3>
+
+        {/* Countdown Status and Time Display */}
+        {countdownState && (
+          <div className="mb-2">
+            <TimeDisplay countdownState={countdownState} format="full" />
+          </div>
         )}
+
+        {/* Last Tended Info */}
+        <div className={`text-sm ${textColorClass} leading-tight opacity-75`}>
+          {chore.lastCompleted === null || typeof chore.lastCompleted === "undefined" 
+            ? "no tending logged"
+            : `Last: ${getTimeSinceLastTending()}${chore.lastTender ? ` by ${chore.lastTender}` : ""}`
+          }
+        </div>
+
+        {/* Points indicator */}
+        <div className="mt-2 text-xs text-amber-600 flex items-center gap-1">
+          <span>⭐</span>
+          <span>{chore.points} points</span>
+          <span>•</span>
+          <span>🔄 {chore.cycleDuration}h cycle</span>
+        </div>
+      </>
       {showModal && (
         <TenderSelectionModal
           chore={chore}
           onClose={() => {
             setShowModal(false);
-            setIsTending(false); // Reset tending state on close
           }}
           onTended={() => {
              if (onTended) onTended();
              setShowModal(false); // Close modal after tending
-             setIsTending(false); // Reset tending state after action
           }}
         />
       )}
@@ -726,17 +711,41 @@ function TenderSelectionModal({ chore, onClose, onTended }: { chore: Chore; onCl
   }, [syncId]);
 
   async function handleTending() {
-    if (!syncId || !selectedTender) {
-      console.error("Missing syncId or selectedTender");
+    if (!syncId) {
+      console.error("Missing syncId");
       return;
     }
+    
+    // Determine the tender ID, creating a new tender if necessary
+    let tenderIdToLog: string | null = selectedTender;
 
-    const tenderObject = tenders.find(t => t.id === selectedTender);
-    if (!tenderObject) {
-        console.error("Could not find tender object for selected ID");
+    if (!tenderIdToLog && newTenderName.trim()) {
+        const newTender = {
+            id: `tender_${Date.now()}`,
+            name: newTenderName.trim(),
+            icon: '👤', // Default icon
+            points: 0,
+        };
+        try {
+            const createResponse = await fetch(`/api/${syncId}/tenders`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(newTender),
+            });
+            if (!createResponse.ok) throw new Error('Failed to create new tender');
+            tenderIdToLog = newTender.id;
+        } catch (error) {
+            console.error('Error creating new tender:', error);
+            return; // Stop if tender creation fails
+        }
+    }
+
+    if (!tenderIdToLog) {
+        console.error("No tender selected or provided.");
         return;
     }
 
+    setIsAdding(true);
     try {
       const response = await fetch(`/api/${syncId}/tend`, {
         method: 'POST',
@@ -745,7 +754,7 @@ function TenderSelectionModal({ chore, onClose, onTended }: { chore: Chore; onCl
         },
         body: JSON.stringify({
           choreId: chore.id,
-          tenderId: tenderObject.id, // Use the full tender object ID
+          tenderId: tenderIdToLog,
           notes: notes,
         }),
       });
@@ -762,8 +771,10 @@ function TenderSelectionModal({ chore, onClose, onTended }: { chore: Chore; onCl
     } catch (error) {
       console.error('Error tending chore:', error);
       // Optionally, show an error message to the user
+    } finally {
+        setIsAdding(false);
     }
-  }
+}
 
   function selectTender(name: string) {
     setSelectedTender(name);
