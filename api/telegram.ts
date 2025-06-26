@@ -61,14 +61,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 }
 
 async function findSyncIdByTelegramUserId(userId: number): Promise<string | null> {
-    const allSyncIds = await kv.smembers('kinobi:all_sync_ids');
-    for (const syncId of allSyncIds) {
-        const data: any = await kv.get(`kinobi:${syncId}`);
-        if (data && data.config && data.config.telegramUserId === userId) {
-            return syncId;
-        }
-    }
-    return null;
+    const userKey = `kinobi:telegram_user:${userId}`;
+    const syncId = await kv.get(userKey) as string | null;
+    return syncId;
 }
 
 async function handleLogCommand(chatId: number) {
