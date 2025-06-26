@@ -928,11 +928,6 @@ function LeaderboardComponent() {
   const [error, setError] = useState<string | null>(null);
   const leaderboardRef = React.useRef<HTMLDivElement>(null);
 
-  console.log(`--- LEADERBOARD RENDER ---
-State:
-- Filter Period: ${filterPeriod}
-- Sort By: ${sortBy}`);
-
   const fetchLeaderboardData = useCallback(async () => {
     if (!syncId) return;
     setIsLoading(true);
@@ -965,10 +960,7 @@ State:
 
   // Filter and sort leaderboard data
   const processedData = React.useMemo(() => {
-    console.log('--- useMemo recalculating processedData ---');
-
     if (!leaderboardData || leaderboardData.length === 0) return [];
-    console.log('Base data for calculation:', JSON.parse(JSON.stringify(leaderboardData)));
 
     // Create a deep copy to ensure the original state is never mutated.
     const dataCopy = JSON.parse(JSON.stringify(leaderboardData));
@@ -984,7 +976,7 @@ State:
       const recentCompletions = entry.recentCompletions || [];
       const cutoffTime = Date.now() - (filterPeriod === '7d' ? 7 * 24 * 60 * 60 * 1000 : 30 * 24 * 60 * 60 * 1000);
       
-      const filteredCompletions = recentCompletions.filter(c => c.timestamp > cutoffTime);
+      const filteredCompletions = recentCompletions.filter((c: HistoryEntry) => c.timestamp > cutoffTime);
       
       const newScore = filteredCompletions.reduce((acc, completion) => {
         acc.totalPoints += completion.points || 0;
@@ -1007,8 +999,8 @@ State:
       };
     });
 
-    // 2. Sort the filtered data
-    filteredData.sort((a: LeaderboardEntry, b: LeaderboardEntry) => {
+    // 2. Sort the filtered data using a non-mutating approach
+    const sortedData = [...filteredData].sort((a: LeaderboardEntry, b: LeaderboardEntry) => {
       const scoreA = a.score || { totalPoints: 0, completionCount: 0 };
       const scoreB = b.score || { totalPoints: 0, completionCount: 0 };
       switch (sortBy) {
@@ -1024,8 +1016,7 @@ State:
       }
     });
 
-    console.log('Resulting data from calculation:', JSON.parse(JSON.stringify(filteredData)));
-    return filteredData;
+    return sortedData;
   }, [leaderboardData, filterPeriod, sortBy]);
 
   // Scroll to top when data changes
