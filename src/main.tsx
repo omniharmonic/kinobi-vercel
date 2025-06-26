@@ -389,15 +389,23 @@ function KinobiView() {
     fetchChoresAndConfig();
   };
 
-  if (isLoading || !config) {
+  if (isLoading) {
     return <div className="p-8 text-center text-lg">Loading chores...</div>;
   }
-  
+
   if (error) {
     return <div className="p-8 text-center text-red-500">Error: {error}</div>;
   }
 
-  if (!chores || chores.length === 0) {
+  if (!chores || !config) {
+    return (
+      <div className="p-8 text-center text-lg">
+        No chores or configuration data loaded. You can add some in Settings.
+      </div>
+    );
+  }
+
+  if (chores.length === 0) {
     return (
       <div className="p-8 text-center text-lg">
         No chores found. Get started by adding some in Settings.
