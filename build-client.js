@@ -11,22 +11,8 @@ try {
   // Read the compiled JS
   const compiledJs = readFileSync('public/main.js', 'utf8');
 
-  // Create a module wrapper that works with our HTML setup
-  const wrappedJs = `
-// React and React-Router-DOM are loaded via CDN
-const React = window.React;
-const ReactDOM = window.ReactDOM;
-const ReactRouterDOM = window.ReactRouterDOM;
-
-// Re-export for our compiled code
-window.React = React;
-window.ReactDOM = ReactDOM;
-
-${compiledJs}
-`;
-
-  // Write the final app.js
-  writeFileSync('public/app.js', wrappedJs);
+  // Write the final app.js as a pure ES module
+  writeFileSync('public/app.js', compiledJs);
   
   console.log('✅ Client build complete!');
   console.log('📁 Files created:');

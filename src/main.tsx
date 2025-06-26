@@ -1,10 +1,8 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
-import { createRoot } from "react-dom/client";
+import React, { useState, useEffect, createContext, useContext } from 'react';
+import ReactDOM from 'react-dom/client';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import {
-  BrowserRouter as Router,
   Link,
-  Route,
-  Routes,
   useLocation,
   useNavigate,
   useParams,
@@ -241,9 +239,9 @@ function App() {
 // Wrapped App with Router
 function RoutedApp() {
   return (
-    <Router>
+    <BrowserRouter>
       <App />
-    </Router>
+    </BrowserRouter>
   );
 }
 
@@ -1981,11 +1979,12 @@ function SyncSettingsComponent({ currentSyncId }: { currentSyncId: string }) {
 // --- END SYNC SETTINGS COMPONENTS ---
 
 function client() {
-  const rootElement = document.getElementById("root");
+  const rootElement = document.getElementById('root');
   if (rootElement) {
-    createRoot(rootElement).render(<RoutedApp />);
+    const root = ReactDOM.createRoot(rootElement);
+    root.render(<RoutedApp />);
   } else {
-    console.error("Root element not found!");
+    console.error('Root element not found!');
   }
 }
 
