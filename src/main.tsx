@@ -1052,8 +1052,10 @@ function LeaderboardComponent() {
       {/* Filter and Sort Controls */}
       <div className="flex flex-wrap gap-4 mb-6 justify-center">
         <div className="flex items-center gap-2">
-          <label className="text-sm font-medium text-amber-700">Period:</label>
+          <label htmlFor="leaderboard-period" className="text-sm font-medium text-amber-700">Period:</label>
           <select 
+            id="leaderboard-period"
+            name="leaderboard-period"
             value={filterPeriod} 
             onChange={(e) => setFilterPeriod(e.target.value as 'all' | '7d' | '30d')}
             className="border border-amber-300 rounded px-2 py-1 text-sm bg-yellow-50 focus:ring-amber-500 focus:border-amber-500"
@@ -1065,8 +1067,10 @@ function LeaderboardComponent() {
         </div>
         
         <div className="flex items-center gap-2">
-          <label className="text-sm font-medium text-amber-700">Sort by:</label>
+          <label htmlFor="leaderboard-sort" className="text-sm font-medium text-amber-700">Sort by:</label>
           <select 
+            id="leaderboard-sort"
+            name="leaderboard-sort"
             value={sortBy} 
             onChange={(e) => setSortBy(e.target.value as 'points' | 'completions' | 'average')}
             className="border border-amber-300 rounded px-2 py-1 text-sm bg-yellow-50 focus:ring-amber-500 focus:border-amber-500"
