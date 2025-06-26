@@ -250,7 +250,7 @@ function KinobiLayout() {
 
         <main className="flex-grow overflow-auto bg-[#FAF9F6] text-[#222]">
            {/* Nested routes will be rendered here */}
-           <Outlet context={{ updateAvailable, onUpdate, currentClientVersion }} />
+           <Outlet context={{ updateAvailable, onUpdate: handleUpdate, currentClientVersion }} />
         </main>
 
         <footer className="bg-[#FAF9F6] p-4 text-center text-[#222] flex-shrink-0 border-t border-amber-100">
