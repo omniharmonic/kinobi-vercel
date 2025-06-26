@@ -1,1 +1,45 @@
- 
+{
+  "name": "kinobi-vercel",
+  "version": "1.0.9",
+  "description": "Smart chore tracker with time cycles, point scoring, and leaderboards - Vercel Edition",
+  "scripts": {
+    "dev": "vercel dev",
+    "build": "node build-client.js",
+    "start": "vercel dev",
+    "deploy": "vercel --prod",
+    "migrate": "node migrate-data.js"
+  },
+  "dependencies": {
+    "@vercel/kv": "^1.0.1",
+    "@vercel/node": "^3.0.21",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.16.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.8.0",
+    "@types/react": "^18.2.25",
+    "@types/react-dom": "^18.2.11",
+    "sqlite3": "^5.1.6",
+    "typescript": "^5.2.2",
+    "vercel": "^32.4.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "chore-tracker",
+    "household",
+    "points",
+    "leaderboard",
+    "vercel",
+    "serverless"
+  ],
+  "author": "Kinobi Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-username/kinobi-vercel.git"
+  },
+  "homepage": "https://your-project-name.vercel.app"
+} 
