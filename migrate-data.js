@@ -125,7 +125,7 @@ async function migrateData(dbPath) {
           const newConfig = {
               warningThreshold: config.warningThreshold || 75,
               dangerThreshold: config.urgentThreshold || 90,
-              pointCycle: 24, // Add default pointCycle
+              pointCycle: 24,
           };
 
           // Create the instance data structure for KV
