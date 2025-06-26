@@ -378,35 +378,23 @@ function ChoreTile({ chore, config, onTended, animationIndex = 0 }: { chore: Cho
   const syncId = useSyncId();
   const [isTending, setIsTending] = useState(false);
   const [countdownState, setCountdownState] = useState<CountdownState | null>(null);
-  const [lastTended, setLastTended] = useState<number | null>(chore.lastCompleted || null);
-  const [lastTender, setLastTender] = useState<string | null>(chore.lastTender || null);
-  const [isLoading, setIsLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
-  const [refreshKey, setRefreshKey] = useState(0);
-
-  // This effect recalculates the countdown state whenever the chore's completion date changes
-  useEffect(() => {
-    if (config) {
-        setCountdownState(CountdownService.calculateCountdownState(chore, config));
-    }
-    setLastTended(chore.lastCompleted || null);
-    setLastTender(chore.lastTender || null);
-  }, [chore, config, refreshKey]);
 
   useEffect(() => {
+    // This effect recalculates the countdown state whenever the chore's completion date changes
+    // or the configuration is updated. It also sets up a timer for live updates.
     if (!config) return;
 
     const updateCountdown = () => {
-        setCountdownState(CountdownService.calculateCountdownState(chore, config));
+      setCountdownState(CountdownService.calculateCountdownState(chore, config));
     };
-    
-    // Set up a timer to update the countdown every minute
-    const interval = setInterval(updateCountdown, 60000); // every minute
-    
-    // Initial calculation
-    updateCountdown();
 
-    // Cleanup on unmount
+    updateCountdown(); // Initial calculation
+
+    // Set up a timer to update the countdown every minute
+    const interval = setInterval(updateCountdown, 60000);
+
+    // Cleanup on unmount or when dependencies change
     return () => clearInterval(interval);
   }, [chore, config]);
 
@@ -415,11 +403,27 @@ function ChoreTile({ chore, config, onTended, animationIndex = 0 }: { chore: Cho
     setShowModal(true);
   };
 
+  if (!countdownState) {
+    // Render a placeholder or a simple loading state until the countdown is calculated
+    return (
+      <div
+        className="bg-white rounded-2xl shadow-lg p-4 flex flex-col items-center justify-center aspect-square transition-all duration-300"
+        style={{ animationDelay: `${animationIndex * 50}ms` }}
+      >
+        <div className="text-gray-400">Loading...</div>
+      </div>
+    );
+  }
+
+  const { status } = countdownState;
+  const textColorClass = getTextColorClass();
+  const animationClass = getAnimationClass();
+
   function getTimeSinceLastTending() {
-    if (lastTended === null || typeof lastTended === "undefined") return "no tending logged";
+    if (chore.lastCompleted === null || typeof chore.lastCompleted === "undefined") return "no tending logged";
 
     const now = Date.now();
-    const diff = now - Number(lastTended); // Ensure lastTended is a number
+    const diff = now - Number(chore.lastCompleted); // Ensure lastCompleted is a number
     if (isNaN(diff)) return "Loading..."; // Or handle error
 
     if (diff < 0) return "Just now (check clock?)"; // Future date
@@ -441,8 +445,8 @@ function ChoreTile({ chore, config, onTended, animationIndex = 0 }: { chore: Cho
   }
 
   function getTextColorClass() {
-    if (lastTended === null || typeof lastTended === "undefined") return "text-amber-600";
-    const days = Math.floor((Date.now() - Number(lastTended)) / (1000 * 60 * 60 * 24));
+    if (chore.lastCompleted === null || typeof chore.lastCompleted === "undefined") return "text-amber-600";
+    const days = Math.floor((Date.now() - Number(chore.lastCompleted)) / (1000 * 60 * 60 * 24));
 
     // Calculate opacity percentage based on days (30% to 100% over 4 days)
     const opacityPercent = Math.min(30 + (70 * days / 4), 100);
@@ -461,7 +465,7 @@ function ChoreTile({ chore, config, onTended, animationIndex = 0 }: { chore: Cho
 
   return (
     <div className="text-center flex flex-col items-center w-56">
-      {isLoading
+      {isTending
         ? (
           <div className="text-2xl text-amber-700">
             Assembling bits
@@ -482,7 +486,7 @@ function ChoreTile({ chore, config, onTended, animationIndex = 0 }: { chore: Cho
                   strokeWidth={6}
                 >
                   <div
-                    className={`text-7xl cursor-pointer ${getAnimationClass()} flex items-center justify-center transition-transform duration-200 hover:scale-105`}
+                    className={`text-7xl cursor-pointer ${animationClass} flex items-center justify-center transition-transform duration-200 hover:scale-105`}
                     onClick={handleTendingClick}
                   >
                     {chore.icon}
@@ -490,7 +494,7 @@ function ChoreTile({ chore, config, onTended, animationIndex = 0 }: { chore: Cho
                 </ProgressRing>
               ) : (
                 <div
-                  className={`text-7xl cursor-pointer ${getAnimationClass()} transition-transform duration-200 hover:scale-105 flex items-center justify-center`}
+                  className={`text-7xl cursor-pointer ${animationClass} transition-transform duration-200 hover:scale-105 flex items-center justify-center`}
                   onClick={handleTendingClick}
                   style={{ width: 140, height: 140 }}
                 >
@@ -506,16 +510,16 @@ function ChoreTile({ chore, config, onTended, animationIndex = 0 }: { chore: Cho
 
             {/* Countdown Status and Time Display */}
             {countdownState && (
-              <div key={refreshKey} className="mb-2">
+              <div className="mb-2">
                 <TimeDisplay countdownState={countdownState} format="full" />
               </div>
             )}
 
             {/* Last Tended Info */}
-            <div key={`legacy-${refreshKey}`} className={`text-sm ${getTextColorClass()} leading-tight opacity-75`}>
-              {lastTended === null || typeof lastTended === "undefined" 
+            <div className={`text-sm ${textColorClass} leading-tight opacity-75`}>
+              {chore.lastCompleted === null || typeof chore.lastCompleted === "undefined" 
                 ? "no tending logged"
-                : `Last: ${getTimeSinceLastTending()}${lastTender ? ` by ${lastTender}` : ""}`
+                : `Last: ${getTimeSinceLastTending()}${chore.lastTender ? ` by ${chore.lastTender}` : ""}`
               }
             </div>
 
