@@ -73,13 +73,20 @@ interface LeaderboardEntry {
 // --- Sync ID Management ---
 const LOCAL_STORAGE_SYNC_ID_KEY = "kinobi_sync_id_valtown";
 
+function sanitizeSyncId(id: string | null): string | null {
+  if (!id) return null;
+  const parts = id.split('/');
+  return parts[parts.length - 1];
+}
+
 function generateNewSyncIdInternal() {
   return `sync_${Date.now().toString(36)}${Math.random().toString(36).substring(2, 9)}`;
 }
 
 function getSyncIdFromLocalStorage() {
   if (typeof localStorage !== "undefined") {
-    return localStorage.getItem(LOCAL_STORAGE_SYNC_ID_KEY);
+    const rawId = localStorage.getItem(LOCAL_STORAGE_SYNC_ID_KEY);
+    return sanitizeSyncId(rawId); // Sanitize the data on read
   }
   return null;
 }
@@ -116,10 +123,10 @@ function App() {
         setCurrentClientVersion(window.PWA_CURRENT_APP_VERSION);
       }
 
-      let resolvedSyncId = urlSyncId;
+      let resolvedSyncId = sanitizeSyncId(urlSyncId || null); // Handle undefined case
 
       if (!resolvedSyncId) {
-        const storedSyncId = getSyncIdFromLocalStorage();
+        const storedSyncId = getSyncIdFromLocalStorage(); // Already sanitized
         if (storedSyncId) {
           resolvedSyncId = storedSyncId;
           // If we have a stored ID but are on the root path, redirect.
