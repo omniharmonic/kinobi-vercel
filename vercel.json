@@ -10,13 +10,12 @@
       "destination": "/api/$1"
     },
     {
+      "source": "/(manifest.json|sw.js|kinobi_alpha.gif)",
+      "destination": "/$1"
+    },
+    {
       "source": "/(.*)",
-      "destination": "/dist/index.html",
-      "has": [
-        { "type": "host", "value": "!manifest.json" },
-        { "type": "host", "value": "!sw.js" },
-        { "type": "host", "value": "!kinobi_alpha.gif" }
-      ]
+      "destination": "/dist/index.html"
     }
   ],
   "headers": [
