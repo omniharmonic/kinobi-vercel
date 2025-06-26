@@ -589,9 +589,14 @@ function ChoreTile({ chore, config, onTended, animationIndex = 0 }: { chore: Cho
       {showModal && (
         <TenderSelectionModal
           chore={chore}
-          onClose={() => setShowModal(false)}
+          onClose={() => {
+            setShowModal(false);
+            setIsTending(false); // Reset tending state on close
+          }}
           onTended={() => {
              if (onTended) onTended();
+             setShowModal(false); // Close modal after tending
+             setIsTending(false); // Reset tending state after action
           }}
         />
       )}
