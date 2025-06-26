@@ -1238,19 +1238,19 @@ function SyncSettingsView({ updateAvailable, onUpdate, currentClientVersion }: {
   const syncId = useSyncId();
   if (!syncId) return <div>Loading sync information...</div>;
   return (
-    <div className="space-y-6 w-full max-w-lg p-4">
-      <section className="bg-white rounded-lg shadow p-4">
-        <UpdatesComponent updateAvailable={updateAvailable} onUpdate={onUpdate} currentClientVersion={currentClientVersion} />
-      </section>
-      <section className="bg-white rounded-lg shadow p-4">
-        <ManageChoresComponent />
-      </section>
-      <section className="bg-white rounded-lg shadow p-4">
-        <ManageTendersComponent />
-      </section>
-      <section className="bg-white rounded-lg shadow p-4">
-        <SyncSettingsComponent currentSyncId={syncId} />
-      </section>
+    <div className="p-4 sm:p-6 md:p-8 space-y-8">
+      {/* Isolate the main settings component for debugging */}
+      <SyncSettingsComponent currentSyncId={syncId} />
+      
+      {/* The following components are temporarily disabled to find the source of the error. */}
+      {/* <ManageChoresComponent /> */}
+      {/* <ManageTendersComponent /> */}
+      
+      <UpdatesComponent 
+        updateAvailable={updateAvailable} 
+        onUpdate={onUpdate} 
+        currentClientVersion={currentClientVersion} 
+      />
     </div>
   );
 }
