@@ -32,10 +32,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             } else if (/^\d{6}$/.test(text)) {
                 await handleLinkingToken(text, chatId);
             } else {
-                await callTelegramApi('sendMessage', {
-                    chat_id: chatId,
-                    text: "I don't understand that command. Try /help for a list of things I can do.",
-                });
+                // Only send the "I don't understand" message in a private chat.
+                // In groups, the bot should remain silent for non-command messages.
+                if (message.chat.type === 'private') {
+                    await callTelegramApi('sendMessage', {
+                        chat_id: chatId,
+                        text: "I don't understand that command. Try /help for a list of things I can do.",
+                    });
+                }
             }
         } else if (update.callback_query) {
             const callbackQuery = update.callback_query;
