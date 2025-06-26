@@ -11,7 +11,12 @@
     },
     {
       "source": "/(.*)",
-      "destination": "/dist/index.html"
+      "destination": "/dist/index.html",
+      "has": [
+        { "type": "host", "value": "!manifest.json" },
+        { "type": "host", "value": "!sw.js" },
+        { "type": "host", "value": "!kinobi_alpha.gif" }
+      ]
     }
   ],
   "headers": [

@@ -1,0 +1,9 @@
+{
+  "name": "Kinobi",
+  "short_name": "Kinobi",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "description": "Kinobi Chore Tracker",
+  "icons": []
+} 
