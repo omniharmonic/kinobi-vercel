@@ -1,4 +1,4 @@
-import React, { useState, useEffect, createContext, useContext, useCallback } from 'react';
+import React, { useState, useEffect, createContext, useContext, useCallback, useRef } from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter, Routes, Route, Navigate, Outlet, useOutletContext } from 'react-router-dom';
 import {
@@ -926,6 +926,7 @@ function LeaderboardComponent() {
   const [filterPeriod, setFilterPeriod] = useState<'all' | '7d' | '30d'>('all');
   const [sortBy, setSortBy] = useState<'points' | 'completions' | 'average'>('points');
   const [error, setError] = useState<string | null>(null);
+  const leaderboardRef = React.useRef<HTMLDivElement>(null);
 
   const fetchLeaderboardData = useCallback(async () => {
     if (!syncId) return;
@@ -1018,6 +1019,13 @@ function LeaderboardComponent() {
     return filteredData;
   }, [leaderboardData, filterPeriod, sortBy]);
 
+  // Scroll to top when data changes
+  useEffect(() => {
+    if (leaderboardRef.current) {
+      leaderboardRef.current.scrollTop = 0;
+    }
+  }, [processedData]);
+
   if (isLoading) {
     return (
       <div className="text-2xl text-amber-700 text-center">
@@ -1038,7 +1046,7 @@ function LeaderboardComponent() {
   }
 
   return (
-    <div className="bg-gradient-to-br from-yellow-50 to-amber-50 rounded-lg shadow-lg p-6 border-2 border-amber-200">
+    <div ref={leaderboardRef} className="bg-gradient-to-br from-yellow-50 to-amber-50 rounded-lg shadow-lg p-6 border-2 border-amber-200">
       <h2 className="text-3xl font-bold text-amber-800 mb-6 text-center">🏆 Leaderboard</h2>
       
       {/* Filter and Sort Controls */}
