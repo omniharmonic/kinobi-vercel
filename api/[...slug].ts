@@ -116,15 +116,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 if (resource === 'history') return res.status(200).json(data.history || []);
                 if (resource === 'config') return res.status(200).json(data.config || {});
                 if (resource === 'leaderboard') {
+                    const { period = 'all', sortBy = 'points' } = req.query;
+
                     const tenderScores: { [key: string]: { totalPoints: number; completionCount: number; lastActivity: number } } = {};
 
                     // Initialize scores for all tenders
                     for (const tender of data.tenders) {
                         tenderScores[tender.id] = { totalPoints: 0, completionCount: 0, lastActivity: 0 };
                     }
+                    
+                    // Filter history based on period
+                    let filteredHistory = data.history;
+                    if (typeof period === 'string' && period !== 'all') {
+                        const days = parseInt(period.replace('d', ''), 10);
+                        if (!isNaN(days)) {
+                            const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+                            filteredHistory = data.history.filter(h => h.timestamp > cutoff);
+                        }
+                    }
 
-                    // Calculate scores from history
-                    for (const entry of data.history) {
+                    // Calculate scores from the (potentially filtered) history
+                    for (const entry of filteredHistory) {
                         const tender = data.tenders.find(t => t.name === entry.tender);
                         if (tender && tenderScores[tender.id]) {
                             tenderScores[tender.id].totalPoints += entry.points;
@@ -135,7 +147,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                         }
                     }
 
-                    const leaderboard: any[] = data.tenders.map(tender => ({
+                    let leaderboard: any[] = data.tenders.map(tender => ({
                         tender: { id: tender.id, name: tender.name },
                         score: {
                             tenderId: tender.id,
@@ -144,8 +156,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                             completionCount: tenderScores[tender.id]?.completionCount || 0,
                             lastActivity: tenderScores[tender.id]?.lastActivity || 0,
                         },
-                        rank: 0, // Rank will be assigned on the client
-                        recentCompletions: data.history.filter(h => h.tender === tender.name),
+                        rank: 0, // Rank will be assigned after sorting
+                        recentCompletions: filteredHistory.filter(h => h.tender === tender.name),
+                    }));
+
+                    // Sort the leaderboard on the server
+                    leaderboard.sort((a, b) => {
+                        const scoreA = a.score;
+                        const scoreB = b.score;
+                        switch (sortBy) {
+                            case 'completions':
+                                return scoreB.completionCount - scoreA.completionCount;
+                            case 'average':
+                                const avgA = scoreA.completionCount > 0 ? scoreA.totalPoints / scoreA.completionCount : 0;
+                                const avgB = scoreB.completionCount > 0 ? scoreB.totalPoints / scoreB.completionCount : 0;
+                                return avgB - avgA;
+                            case 'points':
+                            default:
+                                return scoreB.totalPoints - scoreA.totalPoints;
+                        }
+                    });
+
+                    // Assign rank after sorting
+                    leaderboard = leaderboard.map((entry, index) => ({
+                        ...entry,
+                        rank: index + 1,
                     }));
 
                     return res.status(200).json(leaderboard);

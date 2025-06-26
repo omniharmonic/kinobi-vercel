@@ -348,3 +348,73 @@ npm run migrate path/to/kinobi.db
 ```
 
 **Estimated Completion**: 2-3 hours for backend implementation, then ready for production! 🌐⚡ 
+
+# Kinobi Telegram Bot Task List
+
+This document provides a detailed, actionable checklist for developing the Kinobi Telegram Bot.
+
+## Phase 1: Core Bot Infrastructure and Configuration
+
+-   [ ] **Setup & Configuration**
+    -   [ ] Create a new bot on Telegram using `BotFather` to get a token.
+    -   [ ] Add `TELEGRAM_BOT_TOKEN` as a secret environment variable in the Vercel project settings.
+    -   [ ] Create a new file for the webhook handler: `api/telegram.ts`.
+    -   [ ] Create a utility script (`scripts/set-telegram-webhook.ts`) to register the production webhook URL with Telegram.
+-   [ ] **API & Data Model**
+    -   [ ] In `api/[...slug].ts`, update the `Config` interface to include `telegramChatId: string`.
+    -   [ ] Update the `GET` and `POST` handlers for `/config` to support reading and writing the `telegramChatId`.
+    -   [ ] In `api/[...slug].ts`, modify the `getInstanceData` function to add the `syncId` to a global `kinobi:all_sync_ids` set in Vercel KV upon first creation.
+-   [ ] **Frontend UI**
+    -   [ ] In `src/main.tsx`, create a new component `TelegramSettingsComponent`.
+    -   [ ] Add an input field for `Telegram Channel ID` and a save button to this component.
+    -   [ ] Add the `TelegramSettingsComponent` to the `SyncSettingsView`.
+    -   [ ] Implement the save logic to `PUT` the new configuration to the `/api/[syncId]/config` endpoint.
+
+## Phase 2: Interactive Chore Logging
+
+-   [ ] **User-to-SyncID Mapping**
+    -   [ ] In `api/[...slug].ts`, add a `telegramUserId` field to the `Config` model.
+    -   [ ] In `api/telegram.ts`, on `/start`, check if the `telegram.User.id` is already associated with a `syncId`.
+    -   [ ] If not, generate a unique, short-lived token, save it to KV, and message the user with the token.
+    -   [ ] In the `TelegramSettingsComponent`, add a field for the user to enter the token from the bot.
+    -   [ ] Create a new API endpoint `POST /api/[syncId]/link-telegram` that validates the token and saves the `telegram.User.id` to the `syncId`'s config.
+-   [ ] **Bot Command Logic (`api/telegram.ts`)**
+    -   [ ] Implement a command handler for `/log`.
+    -   [ ] The handler should look up the `syncId` associated with the `telegram.User.id`.
+    -   [ ] Fetch chores from `/api/[syncId]/chores`.
+    -   [ ] Send the list of chores as an inline keyboard.
+    -   [ ] Implement a `callback_query` handler for when a chore is selected.
+    -   [ ] In the callback handler, fetch tenders from `/api/[syncId]/tenders`.
+    -   [ ] Send the list of tenders as a new inline keyboard.
+    -   [ ] Implement the final `callback_query` handler for when a tender is selected.
+    -   [ ] Call `POST /api/[syncId]/tend` with the `choreId` and `tenderId`.
+    -   [ ] Send a success or failure message back to the user in Telegram.
+
+## Phase 3: Automated Chore Reminders
+
+-   [ ] **Cron Job Setup**
+    -   [ ] Create a new file for the cron job handler: `api/cron/check-chores.ts`.
+    -   [ ] Add a `CRON_SECRET` to the Vercel environment variables to secure the endpoint.
+    -   [ ] Add a new entry to the `crons` array in `vercel.json` to schedule the job (e.g., hourly).
+-   [ ] **Reminder Logic (`api/cron/check-chores.ts`)**
+    -   [ ] Implement the function to fetch all `syncId`s from the `kinobi:all_sync_ids` set.
+    -   [ ] Loop through each `syncId` and fetch its config.
+    -   [ ] If `telegramChatId` is configured, proceed.
+    -   [ ] Fetch the `chore_statuses` for the current `syncId` from KV.
+    -   [ ] Fetch the live chores from `/api/[syncId]/chores`.
+    -   [ ] For each chore, compare its new status with its old status.
+    -   [ ] If a chore has transitioned to `overdue`, send a formatted message to the `telegramChatId`.
+    -   [ ] After processing, update the `chore_statuses` in KV for the next run.
+
+## Phase 4: Refinement and Deployment
+
+-   [ ] **Final Touches**
+    -   [ ] Use `BotFather` to set a profile picture for the bot.
+    -   [ ] Use `BotFather` to define the list of commands (`/log`, `/start`, `/help`) and a bot description.
+    -   [ ] Add a `/help` command handler in `api/telegram.ts` that explains how to use the bot.
+-   [ ] **Testing & Deployment**
+    -   [ ] Manually test the entire interactive flow in Telegram.
+    -   [ ] Manually trigger the cron job endpoint (with the correct secret) to test the reminder logic.
+    -   [ ] Deploy to Vercel.
+    -   [ ] Run the `scripts/set-telegram-webhook.ts` script with the production URL to finalize the integration.
+    -   [ ] Announce the new feature to the users (i.e., the family).
