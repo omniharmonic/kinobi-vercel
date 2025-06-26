@@ -537,62 +537,60 @@ function ChoreTile({ chore, config, onTended, animationIndex = 0 }: { chore: Cho
 
   return (
     <div className="text-center flex flex-col items-center w-56">
-      <>
-        {/* Progress Ring with Chore Icon */}
-        <div className="mb-4 relative">
-          {countdownState ? (
-            <ProgressRing
-              progress={Math.min(countdownState.progress, 1)} // Cap at 1 for visual consistency
-              status={countdownState.status}
-              size={140}
-              strokeWidth={6}
-            >
-              <div
-                className={`text-7xl cursor-pointer ${animationClass} flex items-center justify-center transition-transform duration-200 hover:scale-105`}
-                onClick={handleTendingClick}
-              >
-                {chore.icon}
-              </div>
-            </ProgressRing>
-          ) : (
+      {/* Progress Ring with Chore Icon */}
+      <div className="mb-4 relative">
+        {countdownState ? (
+          <ProgressRing
+            progress={Math.min(countdownState.progress, 1)} // Cap at 1 for visual consistency
+            status={countdownState.status}
+            size={140}
+            strokeWidth={6}
+          >
             <div
-              className={`text-7xl cursor-pointer ${animationClass} transition-transform duration-200 hover:scale-105 flex items-center justify-center`}
+              className={`text-7xl cursor-pointer ${animationClass} flex items-center justify-center transition-transform duration-200 hover:scale-105`}
               onClick={handleTendingClick}
-              style={{ width: 140, height: 140 }}
             >
               {chore.icon}
             </div>
-          )}
-        </div>
-
-        {/* Chore Name */}
-        <h3 className="text-2xl font-semibold text-amber-800 mb-3 h-16 flex items-center justify-center leading-tight">
-          {chore.name}
-        </h3>
-
-        {/* Countdown Status and Time Display */}
-        {countdownState && (
-          <div className="mb-2">
-            <TimeDisplay countdownState={countdownState} format="full" />
+          </ProgressRing>
+        ) : (
+          <div
+            className={`text-7xl cursor-pointer ${animationClass} transition-transform duration-200 hover:scale-105 flex items-center justify-center`}
+            onClick={handleTendingClick}
+            style={{ width: 140, height: 140 }}
+          >
+            {chore.icon}
           </div>
         )}
+      </div>
 
-        {/* Last Tended Info */}
-        <div className={`text-sm ${textColorClass} leading-tight opacity-75`}>
-          {chore.lastCompleted === null || typeof chore.lastCompleted === "undefined" 
-            ? "no tending logged"
-            : `Last: ${getTimeSinceLastTending()}${chore.lastTender ? ` by ${chore.lastTender}` : ""}`
-          }
-        </div>
+      {/* Chore Name */}
+      <h3 className="text-2xl font-semibold text-amber-800 mb-3 h-16 flex items-center justify-center leading-tight">
+        {chore.name}
+      </h3>
 
-        {/* Points indicator */}
-        <div className="mt-2 text-xs text-amber-600 flex items-center gap-1">
-          <span>⭐</span>
-          <span>{chore.points} points</span>
-          <span>•</span>
-          <span>🔄 {chore.cycleDuration}h cycle</span>
+      {/* Countdown Status and Time Display */}
+      {countdownState && (
+        <div className="mb-2">
+          <TimeDisplay countdownState={countdownState} format="full" />
         </div>
-      </>
+      )}
+
+      {/* Last Tended Info */}
+      <div className={`text-sm ${textColorClass} leading-tight opacity-75`}>
+        {chore.lastCompleted === null || typeof chore.lastCompleted === "undefined" 
+          ? "no tending logged"
+          : `Last: ${getTimeSinceLastTending()}${chore.lastTender ? ` by ${chore.lastTender}` : ""}`
+        }
+      </div>
+
+      {/* Points indicator */}
+      <div className="mt-2 text-xs text-amber-600 flex items-center gap-1">
+        <span>⭐</span>
+        <span>{chore.points} points</span>
+        <span>•</span>
+        <span>🔄 {chore.cycleDuration}h cycle</span>
+      </div>
       {showModal && (
         <TenderSelectionModal
           chore={chore}
@@ -613,11 +611,11 @@ function TenderSelectionModal({ chore, onClose, onTended }: { chore: Chore; onCl
   const syncId = useSyncId();
   const [tenders, setTenders] = useState<Tender[]>([]);
   const [recentTenders, setRecentTenders] = useState<string[]>([]);
-  const [newTenderName, setNewTenderName] = useState("");
+  const [selectedTenderId, setSelectedTenderId] = useState<string | null>(null);
+  const [sortedTenders, setSortedTenders] = useState<any[]>([]);
   const [notes, setNotes] = useState("");
+  const [newTenderName, setNewTenderName] = useState("");
   const [isAdding, setIsAdding] = useState(false);
-  const [selectedTender, setSelectedTender] = useState<string | null>(null);
-  const [sortedTenders, setSortedTenders] = useState<Tender[]>([]);
 
   // Handle escape key to close modal
   useEffect(() => {
@@ -717,7 +715,7 @@ function TenderSelectionModal({ chore, onClose, onTended }: { chore: Chore; onCl
     }
     
     // Determine the tender ID, creating a new tender if necessary
-    let tenderIdToLog: string | null = selectedTender;
+    let tenderIdToLog: string | null = selectedTenderId;
 
     if (!tenderIdToLog && newTenderName.trim()) {
         const newTender = {
@@ -733,7 +731,10 @@ function TenderSelectionModal({ chore, onClose, onTended }: { chore: Chore; onCl
                 body: JSON.stringify(newTender),
             });
             if (!createResponse.ok) throw new Error('Failed to create new tender');
-            tenderIdToLog = newTender.id;
+            const createdTender = await createResponse.json();
+            tenderIdToLog = createdTender.id;
+             // Optimistically add to local state to avoid re-fetch
+            setTenders(prev => [...prev, createdTender]);
         } catch (error) {
             console.error('Error creating new tender:', error);
             return; // Stop if tender creation fails
@@ -776,8 +777,8 @@ function TenderSelectionModal({ chore, onClose, onTended }: { chore: Chore; onCl
     }
 }
 
-  function selectTender(name: string) {
-    setSelectedTender(name);
+  function selectTender(tenderId: string) {
+    setSelectedTenderId(tenderId);
     setNewTenderName(""); // Clear the input field when selecting a tender
   }
 
@@ -826,11 +827,11 @@ function TenderSelectionModal({ chore, onClose, onTended }: { chore: Chore; onCl
             <button
               key={tender.id}
               className={`w-full py-2 px-3 rounded text-left ${
-                selectedTender === tender.name
+                selectedTenderId === tender.id
                   ? "bg-amber-500 text-white"
                   : "bg-amber-100 hover:bg-amber-200 text-amber-800"
               } ${recentTenders.includes(tender.name) ? "border-l-4 border-amber-400" : ""}`}
-              onClick={() => selectTender(tender.name)}
+              onClick={() => selectTender(tender.id)}
             >
               {tender.name}
               {recentTenders.includes(tender.name)
@@ -841,7 +842,7 @@ function TenderSelectionModal({ chore, onClose, onTended }: { chore: Chore; onCl
           {/* New tender input styled like an option */}
           <div
             className={`w-full py-2 px-3 rounded ${
-              !selectedTender && newTenderName
+              !selectedTenderId && newTenderName
                 ? "bg-amber-500 text-white"
                 : "bg-yellow-50 border border-dashed border-amber-300"
             }`}
@@ -851,11 +852,11 @@ function TenderSelectionModal({ chore, onClose, onTended }: { chore: Chore; onCl
               value={newTenderName}
               onChange={(e) => {
                 setNewTenderName(e.target.value);
-                setSelectedTender(null); // Clear selection when typing
+                setSelectedTenderId(null); // Clear selection when typing
               }}
               placeholder="+ Add new tender"
               className={`w-full bg-transparent focus:outline-none ${
-                !selectedTender && newTenderName
+                !selectedTenderId && newTenderName
                   ? "text-white placeholder-amber-100"
                   : "text-amber-800 placeholder-amber-400"
               }`}
@@ -881,7 +882,7 @@ function TenderSelectionModal({ chore, onClose, onTended }: { chore: Chore; onCl
         <button
           onClick={handleTending}
           className="w-full bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded mb-2 disabled:opacity-50 font-semibold"
-          disabled={isAdding || (!selectedTender && !newTenderName.trim())}
+          disabled={isAdding || (!selectedTenderId && !newTenderName.trim())}
         >
           Log Tending {chore.icon}
         </button>
@@ -976,7 +977,7 @@ function LeaderboardComponent() {
 
             return {
                 ...entry,
-                score: { ...score, ...newScore },
+                score: { ...score, totalPoints: newScore.totalPoints, completionCount: newScore.completionCount },
                 recentCompletions: filteredCompletions
             };
         }
@@ -1059,7 +1060,7 @@ function LeaderboardComponent() {
         <p className="text-amber-600 text-center">No scoring data available for the selected period. Complete some chores to get started!</p>
       ) : (
         <div className="space-y-4">
-          {processedData.map((entry, index) => {
+          {processedData.map((entry: LeaderboardEntry, index: number) => {
             const score = entry.score || { totalPoints: 0, completionCount: 0, lastActivity: 0 };
             const tender = entry.tender || { id: `unknown-${index}`, name: 'Unknown' };
             const recentCompletions = entry.recentCompletions || [];
@@ -1114,7 +1115,7 @@ function LeaderboardComponent() {
                       {/* Recent completions preview */}
                       {recentCompletions.length > 0 && (
                         <div className="mt-2 text-xs text-amber-500">
-                          Recent: {recentCompletions.slice(0, 3).map((completion, i) => (
+                          Recent: {recentCompletions.slice(0, 3).map((completion: HistoryEntry, i: number) => (
                             <span key={completion.id}>
                               {i > 0 && ', '}
                               {new Date(completion.timestamp).toLocaleDateString()}

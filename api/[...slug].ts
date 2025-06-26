@@ -145,7 +145,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                             lastActivity: tenderScores[tender.id]?.lastActivity || 0,
                         },
                         rank: 0, // Rank will be assigned on the client
-                        recentCompletions: data.history.filter(h => h.tender === tender.name).slice(0, 5),
+                        recentCompletions: data.history.filter(h => h.tender === tender.name),
                     }));
 
                     return res.status(200).json(leaderboard);
@@ -221,14 +221,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 }
                 if (resource === 'tenders' && rest.length > 0) {
                     const tenderId = rest[0];
+                    const tenderName = data.tenders.find(t => t.id === tenderId)?.name;
                     const updatedTenderData = req.body as Partial<Tender>;
                     const tenderIndex = data.tenders.findIndex(t => t.id === tenderId);
                     if (tenderIndex > -1) {
                         data.tenders[tenderIndex] = { ...data.tenders[tenderIndex], ...updatedTenderData };
+                        // Update name in history if it has changed
+                        if (tenderName && updatedTenderData.name && tenderName !== updatedTenderData.name) {
+                            data.history.forEach(h => {
+                                if (h.tender === tenderName) {
+                                    h.tender = updatedTenderData.name as string;
+                                }
+                            });
+                        }
                         await setInstanceData(syncId, data);
                         return res.status(200).json(data.tenders[tenderIndex]);
                     }
                     return res.status(404).json({ error: 'Tender not found' });
+                }
+                if (resource === 'chores' && rest.length > 1 && rest[1] === 'reorder') {
+                    const { oldIndex, newIndex } = req.body;
+                    const [removed] = data.chores.splice(oldIndex, 1);
+                    data.chores.splice(newIndex, 0, removed);
+                    await setInstanceData(syncId, data);
+                    return res.status(200).json(data.chores);
                 }
                 break;
             
@@ -241,7 +257,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 }
                 if (resource === 'tenders' && rest.length > 0) {
                     const tenderId = rest[0];
+                    const tenderName = data.tenders.find(t => t.id === tenderId)?.name;
                     data.tenders = data.tenders.filter(t => t.id !== tenderId);
+                    // Optional: Remove tender from history as well, or reassign
+                    if (tenderName) {
+                        data.history = data.history.filter(h => h.tender !== tenderName);
+                    }
+                    await setInstanceData(syncId, data);
+                    return res.status(200).json({ success: true });
+                }
+                if (resource === 'history' && rest.length > 0) {
+                    const entryId = rest[0];
+                    data.history = data.history.filter(h => h.id !== entryId);
                     await setInstanceData(syncId, data);
                     return res.status(200).json({ success: true });
                 }
