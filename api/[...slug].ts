@@ -69,8 +69,8 @@ function migrateChore(chore: any): Chore {
     icon: chore.icon,
     cycleDuration: chore.cycleDuration || 24,
     points: chore.points || 10,
-    lastCompleted: chore.lastCompleted || null,
-    dueDate: chore.dueDate || null,
+          lastCompleted: chore.lastCompleted || undefined,
+      dueDate: chore.dueDate || undefined,
   };
 }
 
@@ -87,8 +87,8 @@ async function getInstanceData(syncId: string): Promise<InstanceData> {
         icon: "🪴",
         cycleDuration: 24,
         points: 10,
-        lastCompleted: null,
-        dueDate: null,
+        lastCompleted: undefined,
+        dueDate: undefined,
       };
       
       data = {
@@ -206,8 +206,8 @@ async function handleChores(req: VercelRequest, res: VercelResponse, syncId: str
       icon: icon.trim(),
       cycleDuration: typeof cycleDuration === 'number' && cycleDuration > 0 ? cycleDuration : instanceData.config.defaultCycleDuration,
       points: typeof points === 'number' && points > 0 ? points : instanceData.config.defaultPoints,
-      lastCompleted: null,
-      dueDate: null,
+      lastCompleted: undefined,
+      dueDate: undefined,
     };
     
     instanceData.chores.push(newChore);
