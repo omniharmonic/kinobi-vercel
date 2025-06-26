@@ -47,7 +47,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 const choreId = data.replace('log_chore_', '');
                 await handleChoreSelection(chatId, choreId, messageId);
             } else if (data.startsWith('log_tender_')) {
-                const [choreId, tenderId] = data.replace('log_tender_', '').split('_');
+                const payload = data.replace('log_tender_', '');
+                const [choreId, tenderId] = payload.split(':');
                 await handleTenderSelection(chatId, choreId, tenderId, messageId);
             }
         }
@@ -126,7 +127,7 @@ async function handleChoreSelection(chatId: number, choreId: string, messageId: 
     const keyboard = {
         inline_keyboard: tenders.map((tender: any) => ([{
             text: tender.name,
-            callback_data: `log_tender_${choreId}_${tender.id}`
+            callback_data: `log_tender_${choreId}:${tender.id}`
         }]))
     };
 
