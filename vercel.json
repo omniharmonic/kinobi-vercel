@@ -1,16 +1,11 @@
 {
-  "functions": {
-    "api/[...slug].ts": {
-      "runtime": "@vercel/node@3.0.21"
-    }
-  },
   "rewrites": [
     {
-      "source": "/api/(.*)",
-      "destination": "/api/[...slug]"
+      "source": "/api/:path*",
+      "destination": "/api/:path*"
     },
     {
-      "source": "/(.*)",
+      "source": "/:path*",
       "destination": "/index.html"
     }
   ]
