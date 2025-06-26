@@ -219,8 +219,8 @@ function KinobiLayout() {
 
   return (
     <SyncIdContext.Provider value={syncId}>
-      <div className="flex flex-col h-screen bg-gradient-to-br from-amber-100 via-yellow-50 to-orange-100">
-        <header className="relative bg-[#FAF9F6] p-4 shadow-md flex-shrink-0 flex items-center justify-between text-[#222]">
+      <div className="flex flex-col min-h-screen bg-gradient-to-br from-amber-100 via-yellow-50 to-orange-100">
+        <header className="relative bg-[#FAF9F6] p-4 shadow-md flex-shrink-0 flex items-center justify-between text-[#222] sticky top-0 z-50">
           <div className="flex items-center gap-4 cursor-pointer" onClick={() => navigate(`/${syncId}`)}> 
             <img src="/kinobi_alpha.gif" alt="Kinobi" className="w-16 h-16 kinobi-logo-float" />
             <span className="text-4xl font-bold tracking-tight select-none">Kinobi</span>
@@ -252,7 +252,7 @@ function KinobiLayout() {
           )}
         </header>
 
-        <main className="flex-grow overflow-auto bg-[#FAF9F6] text-[#222]">
+        <main className="flex-grow bg-[#FAF9F6] text-[#222]">
            {/* Nested routes will be rendered here */}
            <Outlet context={{ updateAvailable, onUpdate: handleUpdate, currentClientVersion }} />
         </main>
