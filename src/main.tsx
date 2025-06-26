@@ -962,22 +962,30 @@ function LeaderboardComponent() {
     if (!leaderboardData) return [];
     
     let filteredData = leaderboardData.map(entry => {
-        const score = entry.score || { totalPoints: 0, completionCount: 0, lastActivity: 0 };
-        const recentCompletions = entry.recentCompletions || [];
-
         if (filterPeriod !== 'all') {
+            const score = entry.score || { totalPoints: 0, completionCount: 0, lastActivity: 0, tenderId: '', name: '' };
+            const recentCompletions = entry.recentCompletions || [];
             const cutoffTime = Date.now() - (filterPeriod === '7d' ? 7 * 24 * 60 * 60 * 1000 : 30 * 24 * 60 * 60 * 1000);
             
             const filteredCompletions = recentCompletions.filter(c => c.timestamp > cutoffTime);
             
-            const newScore = filteredCompletions.reduce((acc, completion) => {
+            const newScoreData = filteredCompletions.reduce((acc, completion) => {
                 acc.totalPoints += completion.points || 0;
+                if (completion.timestamp > acc.lastActivity) {
+                    acc.lastActivity = completion.timestamp;
+                }
                 return acc;
-            }, { totalPoints: 0, completionCount: filteredCompletions.length });
+            }, { totalPoints: 0, lastActivity: 0 });
 
             return {
                 ...entry,
-                score: { ...score, totalPoints: newScore.totalPoints, completionCount: newScore.completionCount },
+                score: { 
+                    tenderId: score.tenderId,
+                    name: score.name,
+                    totalPoints: newScoreData.totalPoints, 
+                    completionCount: filteredCompletions.length,
+                    lastActivity: newScoreData.lastActivity
+                },
                 recentCompletions: filteredCompletions
             };
         }
