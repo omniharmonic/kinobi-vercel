@@ -23,6 +23,8 @@ interface Chore {
   cycleDuration: number;        // Duration in hours
   points: number;              // Points awarded for completion
   lastCompleted?: number;       // Timestamp of last completion
+  lastTender?: string | null;   // ID of the last tender
+  history?: { tender: string; timestamp: number }[]; // Optional history directly on the chore
   dueDate?: number;            // Calculated due date timestamp
 }
 
@@ -107,34 +109,42 @@ function App() {
   const refreshingRef = React.useRef(false);
 
   useEffect(() => {
-    // Read the embedded PWA version
-    if (typeof window !== "undefined" && window.PWA_CURRENT_APP_VERSION) {
-      setCurrentClientVersion(window.PWA_CURRENT_APP_VERSION);
-    }
-
-    let resolvedSyncId: string;
-
-    if (urlSyncId) {
-      resolvedSyncId = urlSyncId;
-      setSyncIdInLocalStorage(resolvedSyncId);
-    } else {
-      const storedSyncId = getSyncIdFromLocalStorage();
-      if (storedSyncId) {
-        resolvedSyncId = storedSyncId;
-      } else {
-        resolvedSyncId = generateNewSyncIdInternal();
-        setSyncIdInLocalStorage(resolvedSyncId);
+    // This effect runs once on mount to determine the syncId and set up the app.
+    const initializeApp = () => {
+      if (typeof window !== "undefined" && window.PWA_CURRENT_APP_VERSION) {
+        setCurrentClientVersion(window.PWA_CURRENT_APP_VERSION);
       }
-      // If we are on the root path, we must redirect to the syncId path.
-      if (location.pathname === '/') {
-        navigate(`/${resolvedSyncId}`, { replace: true });
-        // Return here to avoid setting state on a component that is about to unmount.
-        return;
+
+      let resolvedSyncId = urlSyncId;
+
+      if (!resolvedSyncId) {
+        const storedSyncId = getSyncIdFromLocalStorage();
+        if (storedSyncId) {
+          resolvedSyncId = storedSyncId;
+          // If we have a stored ID but are on the root path, redirect.
+          if (location.pathname === '/') {
+            navigate(`/${resolvedSyncId}`, { replace: true });
+            return; // Redirecting, so we'll re-run this effect on the new page.
+          }
+        } else {
+          // No URL syncId and no stored syncId, so generate a new one.
+          resolvedSyncId = generateNewSyncIdInternal();
+          setSyncIdInLocalStorage(resolvedSyncId);
+          navigate(`/${resolvedSyncId}`, { replace: true });
+          return; // Redirecting.
+        }
       }
-    }
-    
-    setSyncId(resolvedSyncId);
-    setIsLoading(false);
+      
+      // If we have a syncId from the URL, make sure it's stored for next time.
+      if (urlSyncId) {
+        setSyncIdInLocalStorage(urlSyncId);
+      }
+
+      setSyncId(resolvedSyncId || getSyncIdFromLocalStorage());
+      setIsLoading(false);
+    };
+
+    initializeApp();
 
     if (!("serviceWorker" in navigator)) {
       return;
@@ -293,7 +303,10 @@ function KinobiView() {
   const [error, setError] = useState<string | null>(null);
 
   const fetchChoresAndConfig = useCallback(async () => {
-    if (!syncId) return;
+    if (!syncId) {
+      // Still waiting for syncId from parent.
+      return;
+    }
     setIsLoading(true);
     setError(null);
     try {
@@ -302,10 +315,12 @@ function KinobiView() {
         fetch(`/api/${syncId}/config`),
       ]);
       if (!choresResponse.ok) {
-        throw new Error(`Failed to fetch chores: ${choresResponse.statusText}`);
+        const errorText = await choresResponse.text();
+        throw new Error(`Failed to fetch chores: ${choresResponse.statusText} - ${errorText}`);
       }
       if (!configResponse.ok) {
-        throw new Error(`Failed to fetch config: ${configResponse.statusText}`);
+        const errorText = await configResponse.text();
+        throw new Error(`Failed to fetch config: ${configResponse.statusText} - ${errorText}`);
       }
       const choresData = await choresResponse.json();
       const configData = await configResponse.json();
@@ -327,8 +342,12 @@ function KinobiView() {
     fetchChoresAndConfig();
   };
 
-  if (isLoading) {
+  if (isLoading || !config) {
     return <div className="p-8 text-center text-lg">Loading chores...</div>;
+  }
+  
+  if (error) {
+    return <div className="p-8 text-center text-red-500">Error: {error}</div>;
   }
 
   if (!chores || chores.length === 0) {
@@ -358,102 +377,42 @@ function ChoreTile({ chore, config, onTended, animationIndex = 0 }: { chore: Cho
   const syncId = useSyncId();
   const [isTending, setIsTending] = useState(false);
   const [countdownState, setCountdownState] = useState<CountdownState | null>(null);
-  const [lastTended, setLastTended] = useState<number | null>(null);
-  const [lastTender, setLastTender] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [lastTended, setLastTended] = useState<number | null>(chore.lastCompleted || null);
+  const [lastTender, setLastTender] = useState<string | null>(chore.lastTender || null);
+  const [isLoading, setIsLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
-  async function fetchLastTendedInternal() {
-    if (!syncId || !chore) return;
-    setIsLoading(true);
-    try {
-      // Fetch the history and find the last tending for this specific chore
-      const response = await fetch(`/api/${syncId}/history`);
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-      const allHistory = await response.json();
-      
-      // Filter for this chore and get the most recent
-      const choreHistory = allHistory.filter((entry: any) => entry.chore_id === chore.id);
-      if (choreHistory.length > 0) {
-        const lastEntry = choreHistory[0]; // Already sorted by timestamp desc from API
-        setLastTended(lastEntry.timestamp);
-        setLastTender(lastEntry.person);
-      } else {
-        setLastTended(null);
-        setLastTender(null);
-      }
-    } catch (error) {
-      console.error("Error fetching last tended:", error);
-      setLastTended(null);
-      setLastTender(null);
-    }
-    setIsLoading(false);
-  }
-
-  // Initial data fetch when component mounts or syncId/chore changes
-  useEffect(() => {
-    fetchLastTendedInternal();
-  }, [syncId, chore]);
-
-  // Calculate countdown state whenever chore data changes
+  // This effect recalculates the countdown state whenever the chore's completion date changes
   useEffect(() => {
     if (config) {
-      const newCountdownState = CountdownService.calculateCountdownState(chore, config);
-      setCountdownState(newCountdownState);
+        setCountdownState(CountdownService.calculateCountdownState(chore, config));
     }
+    setLastTended(chore.lastCompleted || null);
+    setLastTender(chore.lastTender || null);
   }, [chore, config, refreshKey]);
 
-  // Set up refresh timer with background tab optimization
   useEffect(() => {
-    let countdownRefreshInterval: NodeJS.Timeout | null = null;
-    let dataRefreshInterval: NodeJS.Timeout | null = null;
-    let isTabActive = !document.hidden;
+    if (!config) return;
 
-    const startIntervals = () => {
-      // Update countdown display every minute when tab is active
-      countdownRefreshInterval = setInterval(() => {
-        if (!document.hidden) {
-          setRefreshKey(prev => prev + 1); // Trigger re-render with new countdown calculation
-        }
-      }, 60 * 1000); // Update every minute for smooth countdown
-
-      // Fetch fresh data every 5 minutes
-      dataRefreshInterval = setInterval(() => {
-        if (!document.hidden) {
-          fetchLastTendedInternal();
-        }
-      }, 5 * 60 * 1000);
+    const updateCountdown = () => {
+        setCountdownState(CountdownService.calculateCountdownState(chore, config));
     };
+    
+    // Set up a timer to update the countdown every minute
+    const interval = setInterval(updateCountdown, 60000); // every minute
+    
+    // Initial calculation
+    updateCountdown();
 
-    const stopIntervals = () => {
-      if (countdownRefreshInterval) clearInterval(countdownRefreshInterval);
-      if (dataRefreshInterval) clearInterval(dataRefreshInterval);
-    };
+    // Cleanup on unmount
+    return () => clearInterval(interval);
+  }, [chore, config]);
 
-    // Handle visibility change (tab becomes active/inactive)
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        // Tab became inactive - reduce timer activity
-        isTabActive = false;
-      } else {
-        // Tab became active - refresh immediately and resume normal timers
-        isTabActive = true;
-        setRefreshKey(prev => prev + 1); // Immediate refresh
-        fetchLastTendedInternal(); // Fetch fresh data
-      }
-    };
-
-    // Start intervals and listen for visibility changes
-    startIntervals();
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    // Clean up on unmount
-    return () => {
-      stopIntervals();
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [syncId, chore]); // Re-create intervals if syncId or chore changes
+  const handleTendingClick = () => {
+    setIsTending(true);
+    setShowModal(true);
+  };
 
   function getTimeSinceLastTending() {
     if (lastTended === null || typeof lastTended === "undefined") return "no tending logged";
@@ -523,7 +482,7 @@ function ChoreTile({ chore, config, onTended, animationIndex = 0 }: { chore: Cho
                 >
                   <div
                     className={`text-7xl cursor-pointer ${getAnimationClass()} flex items-center justify-center transition-transform duration-200 hover:scale-105`}
-                    onClick={() => setShowModal(true)}
+                    onClick={handleTendingClick}
                   >
                     {chore.icon}
                   </div>
@@ -531,7 +490,7 @@ function ChoreTile({ chore, config, onTended, animationIndex = 0 }: { chore: Cho
               ) : (
                 <div
                   className={`text-7xl cursor-pointer ${getAnimationClass()} transition-transform duration-200 hover:scale-105 flex items-center justify-center`}
-                  onClick={() => setShowModal(true)}
+                  onClick={handleTendingClick}
                   style={{ width: 140, height: 140 }}
                 >
                   {chore.icon}
@@ -573,8 +532,7 @@ function ChoreTile({ chore, config, onTended, animationIndex = 0 }: { chore: Cho
           chore={chore}
           onClose={() => setShowModal(false)}
           onTended={() => {
-            fetchLastTendedInternal();
-            if (onTended) onTended(); // Also call parent's onTended to refresh chores if needed
+             if (onTended) onTended();
           }}
         />
       )}
@@ -707,7 +665,7 @@ function TenderSelectionModal({ chore, onClose, onTended }: { chore: Chore; onCl
         });
       }
 
-      onTended(); // This will call fetchLastTendedInternal in ShitPile component
+      onTended(); // This will call fetchChoresAndConfig in ShitPile component
       onClose();
     } catch (error) {
       console.error("Error tending space:", error);
