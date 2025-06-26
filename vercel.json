@@ -9,7 +9,7 @@
   "crons": [
     {
       "path": "/api/cron/check-chores",
-      "schedule": "0 * * * *"
+      "schedule": "0 0 * * *"
     }
   ]
 }
