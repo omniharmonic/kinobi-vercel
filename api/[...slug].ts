@@ -107,7 +107,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const { slug } = req.query;
     const path = Array.isArray(slug) ? slug.join('/') : slug || '';
-    const pathParts = path.split('/').filter(Boolean);
+    
+    // Filter out empty parts and the initial 'api' segment if present
+    let pathParts = path.split('/').filter(Boolean);
+    if (pathParts[0] === 'api') {
+      pathParts = pathParts.slice(1);
+    }
 
     // Handle app-version endpoint
     if (pathParts[0] === 'app-version') {
@@ -115,8 +120,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // All other endpoints require syncId
-    if (pathParts.length < 2) {
-      return res.status(400).json({ error: 'Invalid API path' });
+    if (pathParts.length < 1) {
+      return res.status(400).json({ error: 'Invalid API path, syncId is missing' });
     }
 
     const syncId = pathParts[0];
