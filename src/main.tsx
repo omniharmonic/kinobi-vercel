@@ -45,7 +45,8 @@ interface ChoreConfig {
   defaultCycleDuration: number;  // Default 24 hours
   defaultPoints: number;         // Default points per chore (10)
   warningThreshold: number;      // When to show yellow (75%)
-  urgentThreshold: number;       // When to show red (90%)
+  dangerThreshold: number;       // When to show red (90%)
+  pointCycle?: number; // Optional as it might not be used everywhere
 }
 
 interface CountdownState {
@@ -1991,43 +1992,38 @@ if (typeof document !== "undefined") {
 // --- Countdown Calculation Service ---
 class CountdownService {
   static calculateCountdownState(chore: Chore, config: ChoreConfig): CountdownState {
+    if (!chore.lastCompleted) {
+      return { progress: 0, status: 'good', timeRemaining: chore.cycleDuration };
+    }
+
     const now = Date.now();
-    
-    // If no last completion, show as good (new chore)
-    if (!chore.lastCompleted || !chore.dueDate) {
-      return {
-        progress: 0,
-        status: 'good',
-        timeRemaining: chore.cycleDuration
-      };
-    }
-    
-    const timeSinceCompletion = now - chore.lastCompleted;
-    const cycleDurationMs = chore.cycleDuration * 60 * 60 * 1000; // Convert hours to ms
-    const progress = timeSinceCompletion / cycleDurationMs;
-    
-    // Calculate hours remaining (can be negative if overdue)
-    const timeRemainingMs = chore.dueDate - now;
-    const timeRemainingHours = timeRemainingMs / (60 * 60 * 1000);
-    
-    let status: CountdownState['status'];
-    if (progress >= 1) {
+    const totalCycleMillis = chore.cycleDuration * 60 * 60 * 1000;
+    const elapsedMillis = now - chore.lastCompleted;
+
+    let progress = Math.min(Math.max(elapsedMillis / totalCycleMillis, 0), 1.1); // Cap progress slightly above 1 for overdue state
+
+    const warningTime = totalCycleMillis * (config.warningThreshold / 100);
+    const urgentTime = totalCycleMillis * (config.dangerThreshold / 100);
+
+    let status: CountdownState['status'] = 'good';
+    if (elapsedMillis >= totalCycleMillis) {
       status = 'overdue';
-    } else if (progress >= (config.urgentThreshold / 100)) {
+    } else if (elapsedMillis >= urgentTime) {
       status = 'urgent';
-    } else if (progress >= (config.warningThreshold / 100)) {
+    } else if (elapsedMillis >= warningTime) {
       status = 'warning';
-    } else {
-      status = 'good';
     }
     
-    return {
-      progress: Math.max(0, progress), // Ensure progress is at least 0
-      status,
-      timeRemaining: timeRemainingHours
-    };
+    // If overdue, progress should be considered 1 for display, but calculations might differ
+    if (status === 'overdue') {
+        progress = 1;
+    }
+
+    const timeRemaining = (totalCycleMillis - elapsedMillis) / (1000 * 60 * 60); // In hours
+
+    return { progress, status, timeRemaining };
   }
-  
+
   static formatTimeRemaining(hours: number): string {
     if (hours < 0) {
       const overdue = Math.abs(hours);
