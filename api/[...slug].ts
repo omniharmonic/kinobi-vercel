@@ -254,6 +254,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                     const token = Math.floor(100000 + Math.random() * 900000).toString(); // 6-digit token
                     data.config.telegramLinkingToken = token;
                     data.config.telegramLinkingTokenTimestamp = Date.now();
+                    
+                    // Create a temporary reverse-lookup record with a 10-minute expiry
+                    const tokenKey = `kinobi:token:${token}`;
+                    await kv.set(tokenKey, syncId, { ex: 600 }); // 600 seconds = 10 minutes
+                    
                     await setInstanceData(syncId, data);
                     return res.status(200).json({ token });
                 }
