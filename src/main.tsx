@@ -31,6 +31,9 @@ interface Chore {
 interface Tender {
   id: string;
   name: string;
+  // Note: icon and points are now part of the leaderboard data, not the base tender object.
+  icon?: string;
+  points?: number;
 }
 
 interface HistoryEntry {
@@ -39,6 +42,7 @@ interface HistoryEntry {
   person: string;
   chore_id: string;
   notes: string | null;
+  points: number;
 }
 
 interface ChoreConfig {
@@ -722,33 +726,42 @@ function TenderSelectionModal({ chore, onClose, onTended }: { chore: Chore; onCl
   }, [syncId]);
 
   async function handleTending() {
-    const tenderName = selectedTender || newTenderName.trim();
-    if (!syncId || !tenderName) return;
+    if (!syncId || !selectedTender) {
+      console.error("Missing syncId or selectedTender");
+      return;
+    }
+
+    const tenderObject = tenders.find(t => t.id === selectedTender);
+    if (!tenderObject) {
+        console.error("Could not find tender object for selected ID");
+        return;
+    }
 
     try {
-      await fetch(`/api/${syncId}/tend`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const response = await fetch(`/api/${syncId}/tend`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({
-          tender: tenderName,
           choreId: chore.id,
-          notes: notes.trim() || null,
+          tenderId: tenderObject.id, // Use the full tender object ID
+          notes: notes,
         }),
       });
-
-      if (newTenderName.trim() && !selectedTender) {
-        // Add the new tender to the list
-        await fetch(`/api/${syncId}/tenders`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: newTenderName.trim() }),
-        });
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to record tending');
       }
 
-      onTended(); // This will call fetchChoresAndConfig in ShitPile component
-      onClose();
+      // Call the onTended callback to trigger a refresh
+      if (onTended) {
+        onTended();
+      }
+      onClose(); // Close the modal on success
     } catch (error) {
-      console.error("Error tending space:", error);
+      console.error('Error tending chore:', error);
+      // Optionally, show an error message to the user
     }
   }
 
@@ -902,66 +915,81 @@ function LeaderboardComponent() {
   const [sortBy, setSortBy] = useState<'points' | 'completions' | 'average'>('points');
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function fetchLeaderboardData() {
-      if (!syncId) return;
-      setIsLoading(true);
-      try {
-        const response = await fetch(`/api/${syncId}/leaderboard`);
-        if (!response.ok) {
-          throw new Error('Failed to fetch leaderboard data');
-        }
-        const data = await response.json();
-        setLeaderboardData(data);
-      } catch (err: any) {
-        setError(err.message);
-      } finally {
-        setIsLoading(false);
+  const fetchLeaderboardData = useCallback(async () => {
+    if (!syncId) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/${syncId}/leaderboard`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch leaderboard data: ${response.statusText}`);
       }
+      const data: LeaderboardEntry[] = await response.json();
+      
+      // Assign ranks on the client side after fetching
+      const sortedByPoints = [...data].sort((a, b) => (b.score?.totalPoints || 0) - (a.score?.totalPoints || 0));
+      const rankedData = sortedByPoints.map((entry, index) => ({
+        ...entry,
+        rank: index + 1,
+      }));
+      
+      setLeaderboardData(rankedData);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
     }
-    fetchLeaderboardData();
   }, [syncId]);
+
+  useEffect(() => {
+    fetchLeaderboardData();
+  }, [fetchLeaderboardData]);
 
   // Filter and sort leaderboard data
   const processedData = React.useMemo(() => {
-    let filtered = [...leaderboardData];
+    if (!leaderboardData) return [];
     
-    // Apply time period filter
-    if (filterPeriod !== 'all') {
-      const cutoffTime = Date.now() - (filterPeriod === '7d' ? 7 * 24 * 60 * 60 * 1000 : 30 * 24 * 60 * 60 * 1000);
-      filtered = filtered.map(entry => ({
-        ...entry,
-        recentCompletions: entry.recentCompletions.filter(completion => completion.timestamp > cutoffTime),
-        score: {
-          ...entry.score,
-          totalPoints: entry.recentCompletions.filter(completion => completion.timestamp > cutoffTime).length * 10, // Simplified for filtering
-          completionCount: entry.recentCompletions.filter(completion => completion.timestamp > cutoffTime).length,
+    let filteredData = leaderboardData.map(entry => {
+        const score = entry.score || { totalPoints: 0, completionCount: 0, lastActivity: 0 };
+        const recentCompletions = entry.recentCompletions || [];
+
+        if (filterPeriod !== 'all') {
+            const cutoffTime = Date.now() - (filterPeriod === '7d' ? 7 * 24 * 60 * 60 * 1000 : 30 * 24 * 60 * 60 * 1000);
+            
+            const filteredCompletions = recentCompletions.filter(c => c.timestamp > cutoffTime);
+            
+            const newScore = filteredCompletions.reduce((acc, completion) => {
+                acc.totalPoints += completion.points || 0;
+                return acc;
+            }, { totalPoints: 0, completionCount: filteredCompletions.length });
+
+            return {
+                ...entry,
+                score: { ...score, ...newScore },
+                recentCompletions: filteredCompletions
+            };
         }
-      }));
-    }
-    
-    // Sort by selected criteria
-    filtered.sort((a, b) => {
-      switch (sortBy) {
-        case 'points':
-          return b.score.totalPoints - a.score.totalPoints;
-        case 'completions':
-          return b.score.completionCount - a.score.completionCount;
-        case 'average':
-          const avgA = a.score.completionCount > 0 ? a.score.totalPoints / a.score.completionCount : 0;
-          const avgB = b.score.completionCount > 0 ? b.score.totalPoints / b.score.completionCount : 0;
-          return avgB - avgA;
-        default:
-          return b.score.totalPoints - a.score.totalPoints;
-      }
+        return entry;
     });
-    
-    // Reassign ranks
-    filtered.forEach((entry, index) => {
-      entry.rank = index + 1;
+
+    // Sort the data
+    filteredData.sort((a, b) => {
+        const scoreA = a.score || { totalPoints: 0, completionCount: 0 };
+        const scoreB = b.score || { totalPoints: 0, completionCount: 0 };
+        switch (sortBy) {
+            case 'completions':
+                return scoreB.completionCount - scoreA.completionCount;
+            case 'average':
+                const avgA = scoreA.completionCount > 0 ? scoreA.totalPoints / scoreA.completionCount : 0;
+                const avgB = scoreB.completionCount > 0 ? scoreB.totalPoints / scoreB.completionCount : 0;
+                return avgB - avgA;
+            case 'points':
+            default:
+                return scoreB.totalPoints - scoreA.totalPoints;
+        }
     });
-    
-    return filtered;
+
+    return filteredData;
   }, [leaderboardData, filterPeriod, sortBy]);
 
   if (isLoading) {
@@ -1021,12 +1049,16 @@ function LeaderboardComponent() {
       ) : (
         <div className="space-y-4">
           {processedData.map((entry, index) => {
-            const pointsPerCompletion = entry.score.completionCount > 0 ? 
-              (entry.score.totalPoints / entry.score.completionCount).toFixed(1) : '0.0';
+            const score = entry.score || { totalPoints: 0, completionCount: 0, lastActivity: 0 };
+            const tender = entry.tender || { id: `unknown-${index}`, name: 'Unknown' };
+            const recentCompletions = entry.recentCompletions || [];
+            
+            const pointsPerCompletion = score.completionCount > 0 ? 
+              (score.totalPoints / score.completionCount).toFixed(1) : '0.0';
             
             return (
               <div 
-                key={entry.tender.id} 
+                key={tender.id} 
                 className={`bg-white rounded-lg p-4 shadow-md border-2 transition-all duration-200 hover:shadow-lg ${
                   index === 0 ? 'border-yellow-400 bg-gradient-to-r from-yellow-50 to-amber-50' :
                   index === 1 ? 'border-gray-400 bg-gradient-to-r from-gray-50 to-gray-100' :
@@ -1045,11 +1077,11 @@ function LeaderboardComponent() {
                       {index === 0 && '🥇'}
                       {index === 1 && '🥈'}
                       {index === 2 && '🥉'}
-                      {index > 2 && `#${entry.rank}`}
+                      {index > 2 && `#${index + 1}`}
                     </div>
                     <div>
                       <h3 className="text-xl font-semibold text-amber-800 flex items-center gap-2">
-                        {entry.tender.name}
+                        {tender.name}
                         {index < 3 && (
                           <span className="text-xs bg-amber-200 px-2 py-1 rounded-full">
                             Top Performer
@@ -1057,33 +1089,34 @@ function LeaderboardComponent() {
                         )}
                       </h3>
                       <div className="flex items-center gap-4 text-sm text-amber-600">
-                        <span>{entry.score.completionCount} completions</span>
+                        <span>{score.completionCount} completions</span>
                         <span>•</span>
                         <span>{pointsPerCompletion} pts/completion</span>
-                        <span>•</span>
-                        <span>Last active {new Date(entry.score.lastActivity).toLocaleDateString()}</span>
+                        {score.lastActivity > 0 &&
+                          <>
+                            <span>•</span>
+                            <span>Last active {new Date(score.lastActivity).toLocaleDateString()}</span>
+                          </>
+                        }
                       </div>
                       
                       {/* Recent completions preview */}
-                      {entry.recentCompletions.length > 0 && (
+                      {recentCompletions.length > 0 && (
                         <div className="mt-2 text-xs text-amber-500">
-                          Recent: {entry.recentCompletions.slice(0, 3).map((completion, i) => (
+                          Recent: {recentCompletions.slice(0, 3).map((completion, i) => (
                             <span key={completion.id}>
                               {i > 0 && ', '}
                               {new Date(completion.timestamp).toLocaleDateString()}
                             </span>
                           ))}
-                          {entry.recentCompletions.length > 3 && ` +${entry.recentCompletions.length - 3} more`}
+                          {recentCompletions.length > 3 && ` +${recentCompletions.length - 3} more`}
                         </div>
                       )}
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="text-2xl font-bold text-amber-700">{entry.score.totalPoints}</div>
+                    <div className="text-2xl font-bold text-amber-700">{score.totalPoints}</div>
                     <div className="text-sm text-amber-600">points</div>
-                    {entry.score.completionCount > 0 && (
-                      <div className="text-xs text-amber-500">{pointsPerCompletion} avg</div>
-                    )}
                   </div>
                 </div>
               </div>

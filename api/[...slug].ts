@@ -101,13 +101,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 if (resource === 'history') return res.status(200).json(data.history || []);
                 if (resource === 'config') return res.status(200).json(data.config || {});
                 if (resource === 'leaderboard') {
-                    const leaderboard = data.tenders.map(t => ({
-                       id: t.id,
-                       name: t.name,
-                       icon: t.icon,
-                       points: t.points,
-                   })).sort((a, b) => b.points - a.points);
-                   return res.status(200).json(leaderboard);
+                    const tenderScores: { [key: string]: { totalPoints: number; completionCount: number; lastActivity: number } } = {};
+
+                    // Initialize scores for all tenders
+                    for (const tender of data.tenders) {
+                        tenderScores[tender.id] = { totalPoints: 0, completionCount: 0, lastActivity: 0 };
+                    }
+
+                    // Calculate scores from history
+                    for (const entry of data.history) {
+                        const tender = data.tenders.find(t => t.name === entry.tender);
+                        if (tender && tenderScores[tender.id]) {
+                            tenderScores[tender.id].totalPoints += entry.points;
+                            tenderScores[tender.id].completionCount += 1;
+                            if (entry.timestamp > tenderScores[tender.id].lastActivity) {
+                                tenderScores[tender.id].lastActivity = entry.timestamp;
+                            }
+                        }
+                    }
+
+                    const leaderboard: any[] = data.tenders.map(tender => ({
+                        tender: { id: tender.id, name: tender.name },
+                        score: {
+                            tenderId: tender.id,
+                            name: tender.name,
+                            totalPoints: tenderScores[tender.id]?.totalPoints || 0,
+                            completionCount: tenderScores[tender.id]?.completionCount || 0,
+                            lastActivity: tenderScores[tender.id]?.lastActivity || 0,
+                        },
+                        rank: 0, // Rank will be assigned on the client
+                        recentCompletions: data.history.filter(h => h.tender === tender.name).slice(0, 5),
+                    }));
+
+                    return res.status(200).json(leaderboard);
                 }
                 // Add a temporary debug endpoint to inspect the raw data
                 if (resource === 'debug') {
@@ -129,24 +155,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                     return res.status(201).json(newTender);
                 }
                 if (resource === 'tend') {
-                    const { choreId, tenderId } = req.body;
+                    const { choreId, tenderId, notes } = req.body;
                     const chore = data.chores.find(c => c.id === choreId);
                     const tender = data.tenders.find(t => t.id === tenderId);
 
                     if (chore && tender) {
-                        chore.lastCompleted = Date.now();
-                        chore.lastTender = tenderId;
-                        tender.points += chore.points;
-                        data.history.unshift({
-                            id: `hist_${Date.now()}`,
-                            chore: chore.name,
+                        const timestamp = Date.now();
+                        chore.lastCompleted = timestamp;
+                        chore.lastTender = tender.name; // Use name for consistency, or id if preferred
+                        
+                        // History entry uses the chore and tender names
+                        const historyEntry: HistoryEntry = {
+                            id: `hist_${timestamp}_${chore.id}`,
+                            chore: chore.name, 
                             tender: tender.name,
-                            timestamp: chore.lastCompleted,
+                            timestamp: timestamp,
                             points: chore.points,
-                        });
-                        if (data.history.length > 100) data.history.pop();
+                        };
+
+                        // Prepend to history and trim if necessary
+                        if (!data.history) data.history = [];
+                        data.history.unshift(historyEntry);
+                        if (data.history.length > 100) {
+                            data.history.pop();
+                        }
+
+                        // The `tender.points` is now calculated from history, so we don't need to increment it here.
+                        // If you still want a simple total points on the tender object itself, you can add it back:
+                        // tender.points += chore.points;
+
                         await setInstanceData(syncId, data);
-                        return res.status(200).json({ success: true });
+                        return res.status(200).json({ success: true, historyEntry });
                     }
                     return res.status(404).json({ error: 'Chore or Tender not found' });
                 }
