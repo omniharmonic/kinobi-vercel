@@ -171,6 +171,9 @@ async function handleTenderSelection(chatId: number, choreId: string, tenderId: 
         
         await kv.set(`kinobi:${syncId}`, data);
         
+        // Create a permanent mapping from the telegram user ID to the syncId for future lookups
+        await kv.set(`kinobi:telegram_user:${chatId}`, syncId);
+
         await callTelegramApi('editMessageText', {
             chat_id: chatId,
             message_id: messageId,
@@ -219,6 +222,9 @@ async function handleLinkingToken(token: string, chatId: number) {
         
         await kv.set(dataKey, data);
         
+        // Create a permanent mapping from the telegram user ID to the syncId for future lookups
+        await kv.set(`kinobi:telegram_user:${chatId}`, syncId);
+
         // Clean up the temporary token
         await kv.del(tokenKey);
 
