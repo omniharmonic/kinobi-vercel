@@ -1,4 +1,4 @@
-import React, { useState, useEffect, createContext, useContext } from 'react';
+import React, { useState, useEffect, createContext, useContext, useCallback } from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import {
@@ -99,9 +99,9 @@ function useSyncId() {
 function App() {
   const location = useLocation();
   const navigate = useNavigate();
-  const params = useParams();
+  const { syncId: urlSyncId } = useParams<{ syncId: string }>(); // Explicitly get syncId from params
   const [syncId, setSyncId] = useState<string | null>(null);
-  const [isLoadingSyncId, setIsLoadingSyncId] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [currentClientVersion, setCurrentClientVersion] = useState<string | null>(null);
   const refreshingRef = React.useRef(false);
@@ -112,29 +112,29 @@ function App() {
       setCurrentClientVersion(window.PWA_CURRENT_APP_VERSION);
     }
 
-    // Extract sync ID from URL parameter first, then fallback to localStorage
-    let currentSyncId = params.syncId || null;
-    
-    if (!currentSyncId) {
-      // Check if we're on the root path - redirect to localStorage sync ID or generate new one
-      currentSyncId = getSyncIdFromLocalStorage();
-      if (!currentSyncId) {
-        currentSyncId = generateNewSyncIdInternal();
-        setSyncIdInLocalStorage(currentSyncId);
+    let resolvedSyncId: string;
+
+    if (urlSyncId) {
+      resolvedSyncId = urlSyncId;
+      setSyncIdInLocalStorage(resolvedSyncId);
+    } else {
+      const storedSyncId = getSyncIdFromLocalStorage();
+      if (storedSyncId) {
+        resolvedSyncId = storedSyncId;
+      } else {
+        resolvedSyncId = generateNewSyncIdInternal();
+        setSyncIdInLocalStorage(resolvedSyncId);
       }
-      
-      // If we're on root path, redirect to the sync ID path
+      // If we are on the root path, we must redirect to the syncId path.
       if (location.pathname === '/') {
-        navigate(`/${currentSyncId}`, { replace: true });
+        navigate(`/${resolvedSyncId}`, { replace: true });
+        // Return here to avoid setting state on a component that is about to unmount.
         return;
       }
-    } else {
-      // Store URL-based sync ID in localStorage for future visits
-      setSyncIdInLocalStorage(currentSyncId);
     }
-
-    setSyncId(currentSyncId);
-    setIsLoadingSyncId(false);
+    
+    setSyncId(resolvedSyncId);
+    setIsLoading(false);
 
     if (!("serviceWorker" in navigator)) {
       return;
@@ -181,7 +181,7 @@ function App() {
     return () => {
       navigator.serviceWorker.removeEventListener("controllerchange", controllerChangeHandler);
     };
-  }, [params.syncId, location.pathname, navigate]);
+  }, [urlSyncId, location.pathname, navigate]);
 
   const handleUpdate = () => {
     if (!("serviceWorker" in navigator)) {
@@ -198,13 +198,22 @@ function App() {
     });
   };
 
-  if (isLoadingSyncId || !syncId) {
+  if (isLoading) {
     return (
       <div className="flex flex-col min-h-screen bg-gradient-to-br from-amber-100 via-yellow-50 to-orange-100 items-center justify-center text-2xl">
         {"Initializing Kinobi..."}
         <span>.</span>
         <span>.</span>
         <span>.</span>
+      </div>
+    );
+  }
+
+  // If there's no syncId after loading, we can't proceed.
+  if (!syncId) {
+    return (
+      <div className="p-8 text-center text-lg text-red-600">
+        Could not determine a sync ID. Please check the URL or clear your local storage.
       </div>
     );
   }
@@ -226,7 +235,7 @@ function App() {
         <main className="flex-grow overflow-auto bg-[#FAF9F6] text-[#222]">
           <Routes>
             <Route path="/status" element={<StatusView />} />
-            <Route path="/:syncId" element={<ShitView />} />
+            <Route path="/:syncId" element={<KinobiView />} />
             <Route path="/:syncId/history" element={<HistoryView />} />
             <Route path="/:syncId/leaderboard" element={<LeaderboardView />} />
             <Route
@@ -239,7 +248,8 @@ function App() {
                 />
               }
             />
-            <Route path="/" element={<Navigate to={`/${getSyncIdFromLocalStorage() || generateNewSyncIdInternal()}`} replace />} />
+            {/* The root path is handled by the useEffect, but this is a good fallback */}
+            <Route path="/" element={<div className="p-8 text-center text-lg">Loading...</div>} />
             <Route path="*" element={<Navigate to={`/${syncId}`} replace />} />
           </Routes>
         </main>
@@ -254,15 +264,13 @@ function App() {
 // +++ START NEW COMPONENT +++
 // Simple status component for debugging deployment
 function StatusView() {
+  const syncId = useSyncId();
+
   return (
-    <div className="p-8 text-center">
-      <h1 className="text-2xl font-bold text-green-700">Deployment Status: OK</h1>
-      <p className="mt-2 text-gray-600">
-        This page confirms that the Kinobi application is routing correctly.
-      </p>
-      <p className="mt-4 font-mono bg-gray-100 p-2 rounded">
-        Last Deployed: {new Date().toISOString()}
-      </p>
+    <div className="p-8">
+      <h1 className="text-2xl font-bold">Status</h1>
+      <p>Current Sync ID: {syncId}</p>
+      <p>This is a placeholder page for system status.</p>
     </div>
   );
 }
@@ -277,79 +285,84 @@ function RoutedApp() {
   );
 }
 
-function ShitView() {
+function KinobiView() {
   const syncId = useSyncId();
-  const [chores, setChores] = useState<Chore[]>([]);
+  const [chores, setChores] = useState<Chore[] | null>(null);
   const [config, setConfig] = useState<ChoreConfig | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  async function fetchChoresInternal() {
+  const fetchChoresAndConfig = useCallback(async () => {
     if (!syncId) return;
     setIsLoading(true);
+    setError(null);
     try {
       const [choresResponse, configResponse] = await Promise.all([
         fetch(`/api/${syncId}/chores`),
-        fetch(`/api/${syncId}/config`)
+        fetch(`/api/${syncId}/config`),
       ]);
-      console.log('[DEBUG] Fetched choresResponse:', choresResponse);
-      console.log('[DEBUG] Fetched configResponse:', configResponse);
-      if (!choresResponse.ok) throw new Error(`Chores fetch error! status: ${choresResponse.status}`);
-      if (!configResponse.ok) throw new Error(`Config fetch error! status: ${configResponse.status}`);
+      if (!choresResponse.ok) {
+        throw new Error(`Failed to fetch chores: ${choresResponse.statusText}`);
+      }
+      if (!configResponse.ok) {
+        throw new Error(`Failed to fetch config: ${configResponse.statusText}`);
+      }
       const choresData = await choresResponse.json();
       const configData = await configResponse.json();
-      console.log('[DEBUG] choresData:', choresData);
-      console.log('[DEBUG] configData:', configData);
-      setChores(Array.isArray(choresData) ? choresData : []);
+      setChores(choresData);
       setConfig(configData);
-    } catch (error) {
-      console.error('[ERROR] Error fetching data:', error);
+    } catch (err: any) {
+      setError(err.message);
       setChores([]);
-      setConfig(null);
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
-  }
-
-  useEffect(() => {
-    fetchChoresInternal();
   }, [syncId]);
 
-  if (!syncId) return <div>Loading sync information...</div>;
-  if (isLoading || !config) return <div className="h-full flex items-center justify-center text-2xl text-amber-700">Loading chores...</div>;
+  useEffect(() => {
+    fetchChoresAndConfig();
+  }, [fetchChoresAndConfig]);
 
-  if (chores.length === 0) {
+  const handleTended = () => {
+    fetchChoresAndConfig();
+  };
+
+  if (isLoading) {
+    return <div className="p-8 text-center text-lg">Loading chores...</div>;
+  }
+
+  if (!chores || chores.length === 0) {
     return (
-      <div className="h-full flex items-center justify-center">
-        <div className="text-center text-amber-700">
-          <p className="text-2xl mb-4">No chores configured</p>
-          <p>Add chores in Settings</p>
-        </div>
+      <div className="p-8 text-center text-lg">
+        No chores found. Get started by adding some in Settings.
       </div>
     );
   }
 
-  // Use responsive grid with maximum 4 chores per row
   return (
-    <div className="h-full w-full pt-8 pb-8 px-8 flex items-start justify-center overflow-y-auto">
-      <div className="w-full max-w-7xl grid gap-8 place-items-center" style={{
-        gridTemplateColumns: `repeat(${Math.min(chores.length, 4)}, 1fr)`,
-        gridAutoRows: 'min-content'
-      }}>
-        {chores.map((chore, index) => (
-          <ShitPile key={chore.id} chore={chore} config={config} onTended={fetchChoresInternal} animationIndex={index} />
-        ))}
-      </div>
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6 p-8">
+      {chores.map((chore, index) => (
+        <ChoreTile
+          key={chore.id}
+          chore={chore}
+          config={config!}
+          onTended={handleTended}
+          animationIndex={index}
+        />
+      ))}
     </div>
   );
 }
 
-function ShitPile({ chore, config, onTended, animationIndex = 0 }: { chore: Chore; config: ChoreConfig; onTended: () => void; animationIndex?: number }) {
+function ChoreTile({ chore, config, onTended, animationIndex = 0 }: { chore: Chore; config: ChoreConfig; onTended: () => void; animationIndex?: number }) {
   const syncId = useSyncId();
+  const [isTending, setIsTending] = useState(false);
+  const [countdownState, setCountdownState] = useState<CountdownState | null>(null);
   const [lastTended, setLastTended] = useState<number | null>(null);
   const [lastTender, setLastTender] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [countdownState, setCountdownState] = useState<CountdownState | null>(null);
 
   async function fetchLastTendedInternal() {
     if (!syncId || !chore) return;
@@ -849,25 +862,25 @@ function LeaderboardComponent() {
   const [isLoading, setIsLoading] = useState(true);
   const [filterPeriod, setFilterPeriod] = useState<'all' | '7d' | '30d'>('all');
   const [sortBy, setSortBy] = useState<'points' | 'completions' | 'average'>('points');
-
-  async function fetchLeaderboardData() {
-    if (!syncId) return;
-    setIsLoading(true);
-    try {
-      const response = await fetch(`/api/${syncId}/leaderboard`);
-      if (!response.ok) throw new Error(`Leaderboard fetch error! status: ${response.status}`);
-      
-      const data = await response.json();
-      setLeaderboardData(Array.isArray(data) ? data : []);
-    } catch (error) {
-      console.error("Error fetching leaderboard:", error);
-      setLeaderboardData([]);
-    } finally {
-      setIsLoading(false);
-    }
-  }
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    async function fetchLeaderboardData() {
+      if (!syncId) return;
+      setIsLoading(true);
+      try {
+        const response = await fetch(`/api/${syncId}/leaderboard`);
+        if (!response.ok) {
+          throw new Error('Failed to fetch leaderboard data');
+        }
+        const data = await response.json();
+        setLeaderboardData(data);
+      } catch (err: any) {
+        setError(err.message);
+      } finally {
+        setIsLoading(false);
+      }
+    }
     fetchLeaderboardData();
   }, [syncId]);
 
@@ -920,6 +933,14 @@ function LeaderboardComponent() {
         <span>.</span>
         <span>.</span>
         <span>.</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="text-red-500 text-center">
+        Error: {error}
       </div>
     );
   }
@@ -1052,6 +1073,7 @@ function ShitHistoryComponent() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [showExactTimes, setShowExactTimes] = useState<Record<string, boolean>>({});
   const [clickedTimestamp, setClickedTimestamp] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   // Helper function to format relative time
   const formatRelativeTime = (timestamp: number) => {
@@ -1144,6 +1166,14 @@ function ShitHistoryComponent() {
         <span>.</span>
         <span>.</span>
         <span>.</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="text-red-500 text-center">
+        Error: {error}
       </div>
     );
   }
@@ -1355,29 +1385,30 @@ function ManageChoresComponent() {
   const [newPoints, setNewPoints] = useState<number>(10);
   const [isProcessing, setIsProcessing] = useState(false);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [editingChore, setEditingChore] = useState<Chore | null>(null);
+  const dragItem = React.useRef<number | null>(null);
+  const dragOverItem = React.useRef<number | null>(null);
 
-  async function fetchChoresInternal() {
+  const fetchChoresInternal = useCallback(async () => {
     if (!syncId) return;
     setIsLoading(true);
-    setIsProcessing(true);
     try {
-      const choresResponse = await fetch(`/api/${syncId}/chores`);
-      console.log('[DEBUG] Fetched choresResponse:', choresResponse);
-      if (!choresResponse.ok) throw new Error(`Chores fetch error! status: ${choresResponse.status}`);
-      const choresData = await choresResponse.json();
-      console.log('[DEBUG] choresData:', choresData);
-      setChores(Array.isArray(choresData) ? choresData : []);
-    } catch (error) {
-      console.error('[ERROR] Error fetching chores:', error);
-      setChores([]);
+      const response = await fetch(`/api/${syncId}/chores`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch chores');
+      }
+      setChores(await response.json());
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
-    setIsProcessing(false);
-  }
+  }, [syncId]);
 
   useEffect(() => {
     fetchChoresInternal();
-  }, [syncId]);
+  }, [fetchChoresInternal]);
 
   async function handleAddChore() {
     if (!syncId || !newChoreName.trim() || !newChoreIcon.trim()) return;
@@ -1576,6 +1607,14 @@ function ManageChoresComponent() {
     );
   }
 
+  if (error) {
+    return (
+      <div className="text-red-500 text-center">
+        Error: {error}
+      </div>
+    );
+  }
+
   return (
     <div className={`mt-6 ${isProcessing ? "opacity-50 pointer-events-none" : ""}`}>
       <section className="p-4 bg-gradient-to-br from-yellow-50 to-amber-50 rounded-lg shadow-lg border-2 border-amber-200">
@@ -1724,28 +1763,27 @@ function ManageTendersComponent() {
   const [isLoading, setIsLoading] = useState(true);
   const [newTenderName, setNewTenderName] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  async function fetchTendersInternal() {
+  const fetchTendersInternal = useCallback(async () => {
     if (!syncId) return;
     setIsLoading(true);
-    setIsProcessing(true);
     try {
-      const tendersResponse = await fetch(`/api/${syncId}/tenders`);
-      if (!tendersResponse.ok) throw new Error(`Tenders fetch error! status: ${tendersResponse.status}`);
-
-      const tendersData = await tendersResponse.json();
-      setTenders(Array.isArray(tendersData) ? tendersData : []);
-    } catch (error) {
-      console.error("Error fetching tenders:", error);
-      setTenders([]);
+      const response = await fetch(`/api/${syncId}/tenders`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch tenders');
+      }
+      setTenders(await response.json());
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
-    setIsProcessing(false);
-  }
+  }, [syncId]);
 
   useEffect(() => {
     fetchTendersInternal();
-  }, [syncId]);
+  }, [fetchTendersInternal]);
 
   async function handleAddTender() {
     if (!syncId || !newTenderName.trim()) return;
@@ -1814,6 +1852,14 @@ function ManageTendersComponent() {
     );
   }
 
+  if (error) {
+    return (
+      <div className="text-red-500 text-center">
+        Error: {error}
+      </div>
+    );
+  }
+
   return (
     <div className={`mt-6 ${isProcessing ? "opacity-50 pointer-events-none" : ""}`}>
       <section className="p-4 bg-gradient-to-br from-yellow-50 to-amber-50 rounded-lg shadow-lg border-2 border-amber-200">
@@ -1871,140 +1917,93 @@ function ManageTendersComponent() {
 
 function SyncSettingsComponent({ currentSyncId }: { currentSyncId: string }) {
   const navigate = useNavigate();
-  const [newCodeInput, setNewCodeInput] = useState("");
-  const [copied, setCopied] = useState(false);
-  const [error, setError] = useState("");
-  const [isApplying, setIsApplying] = useState(false);
+  const [isCopied, setIsCopied] = useState(false);
+  const [newSyncId, setNewSyncId] = useState(currentSyncId);
 
   const handleCopy = () => {
-    // Copy the full URL instead of just the sync ID
-    const currentUrl = `${window.location.origin}/${currentSyncId}`;
-    navigator.clipboard.writeText(currentUrl);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    navigator.clipboard.writeText(window.location.href);
+    setIsCopied(true);
+    setTimeout(() => setIsCopied(false), 2000);
   };
 
   const handleApplyNewCode = (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
-    const trimmedCode = newCodeInput.trim();
-
-    if (!trimmedCode) {
-      setError("Sync code cannot be empty.");
-      return;
+    if (newSyncId && newSyncId.trim() !== "") {
+      const sanitizedId = newSyncId.trim();
+      setSyncIdInLocalStorage(sanitizedId);
+      navigate(`/${sanitizedId}`); // Navigate to the new sync ID route
     }
-    if (trimmedCode.length < 6) {
-      setError("Sync code should be at least 6 characters long.");
-      return;
-    }
-    if (trimmedCode === currentSyncId) {
-      setError("This is already your current sync code.");
-      return;
-    }
-
-    setIsApplying(true);
-    setSyncIdInLocalStorage(trimmedCode);
-
-    // Navigate to the new sync ID
-    navigate(`/${trimmedCode}`, { replace: true });
   };
 
   const handleGenerateNew = () => {
-    if (
-      window.confirm(
-        "Generating a new code will create a new sync instance. Your current data will remain but will no longer be associated with this view until you re-enter the old code. Continue?",
-      )
-    ) {
-      setIsApplying(true);
-      const newGeneratedSyncId = generateNewSyncIdInternal();
-      setSyncIdInLocalStorage(newGeneratedSyncId);
-      navigate(`/${newGeneratedSyncId}`, { replace: true });
-    }
+    const newlyGeneratedId = generateNewSyncIdInternal();
+    setNewSyncId(newlyGeneratedId); // Update input field
+    setSyncIdInLocalStorage(newlyGeneratedId); // Save to local storage
+    navigate(`/${newlyGeneratedId}`); // Navigate to the new sync ID route
   };
 
-  if (isApplying) {
-    return (
-      <div className="text-center p-8">
-        <div className="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-amber-500 mb-4">
-        </div>
-        <p>Applying new sync code...</p>
-        <p className="text-sm text-gray-500 mt-2">Navigating to the new instance...</p>
-      </div>
-    );
-  }
-
-  const currentUrl = `${window.location.origin}/${currentSyncId}`;
+  useEffect(() => {
+    // If the syncId from the URL changes, update the input field
+    setNewSyncId(currentSyncId);
+  }, [currentSyncId]);
 
   return (
-    <div className="bg-white rounded-lg shadow-md p-6 max-w-lg mx-auto">
-      <div className="mb-6">
-        <p className="text-gray-700 mb-2 font-semibold">Your Current Sync URL:</p>
-        <div className="flex items-center">
-          <div className="bg-gray-100 p-3 rounded-md flex-1 font-mono text-sm overflow-x-auto shadow-inner">
-            {currentUrl}
-          </div>
+    <div className="p-8">
+      <h2 className="text-2xl font-bold mb-4">Sync Settings</h2>
+      <div className="bg-white p-6 rounded-lg shadow-md">
+        <p className="text-gray-600 mb-4">
+          Use this URL to sync across devices. Anyone with the URL can view and update the chores.
+        </p>
+        <div className="flex items-center gap-2 mb-4">
+          <input
+            type="text"
+            readOnly
+            value={window.location.href}
+            className="w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded-md"
+          />
           <button
             onClick={handleCopy}
-            className="ml-3 p-2 bg-amber-100 hover:bg-amber-200 rounded-md text-amber-800 transition-colors duration-150 ease-in-out"
-            title="Copy sync URL"
+            className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700"
           >
-            {copied ? "Copied!" : "📋 Copy"}
+            {isCopied ? "Copied!" : "Copy"}
           </button>
         </div>
-        <p className="text-xs text-gray-500 mt-2">
-          Share this URL with family members to sync the same chore data.
+
+        <hr className="my-6" />
+
+        <h3 className="text-xl font-bold mb-2">Change Sync Code</h3>
+        <p className="text-gray-600 mb-4">
+          Enter a new sync code below. This will change the URL for this Kinobi instance.
         </p>
-      </div>
-
-      <div className="bg-amber-50 p-4 rounded-md mb-6 border border-amber-200">
-        <h3 className="font-medium text-amber-800 mb-2">How Syncing Works:</h3>
-        <ul className="list-disc pl-5 space-y-1 text-sm text-amber-700">
-          <li>Each sync code has its own unique URL and data set.</li>
-          <li>Share the URL above with family members to access the same chores.</li>
-          <li>Changing the code switches to a different data set.</li>
-          <li>Generating a new code creates a fresh, empty Kinobi instance.</li>
-        </ul>
-      </div>
-
-      <form onSubmit={handleApplyNewCode} className="space-y-4 mb-6">
-        <div>
-          <label htmlFor="newCode" className="block text-sm font-medium text-gray-700 mb-1">
-            Enter an Existing or New Sync Code:
-          </label>
+        <form onSubmit={handleApplyNewCode} className="flex items-center gap-2">
           <input
-            id="newCode"
             type="text"
-            value={newCodeInput}
-            onChange={(e) => {
-              setNewCodeInput(e.target.value);
-              setError("");
-            }}
-            placeholder="e.g., sync_mca2hernjig8uyp"
-            className={`w-full p-2 border rounded-md shadow-sm focus:ring-amber-500 focus:border-amber-500 ${
-              error ? "border-red-500" : "border-gray-300"
-            }`}
+            value={newSyncId}
+            onChange={(e) => setNewSyncId(e.target.value)}
+            placeholder="Enter new or existing sync code"
+            className="w-full px-3 py-2 border border-gray-300 rounded-md"
           />
-          {error && <p className="text-red-600 text-sm mt-1">{error}</p>}
-        </div>
-        <button
-          type="submit"
-          className="w-full p-2 bg-amber-500 hover:bg-amber-600 text-white rounded-md transition-colors duration-150 ease-in-out disabled:opacity-70"
-          disabled={!newCodeInput.trim() || newCodeInput.trim() === currentSyncId || isApplying}
-        >
-          Switch to This Sync Code
-        </button>
-      </form>
+          <button
+            type="submit"
+            disabled={!newSyncId || newSyncId.trim() === "" || newSyncId.trim() === currentSyncId}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+          >
+            Apply
+          </button>
+        </form>
 
-      <div>
+        <hr className="my-6" />
+
+        <h3 className="text-xl font-bold mb-2">Create New Instance</h3>
+        <p className="text-gray-600 mb-4">
+          Generate a new, unique URL for a separate set of chores.
+        </p>
         <button
           onClick={handleGenerateNew}
-          className="w-full p-2 bg-orange-500 hover:bg-orange-600 text-white rounded-md transition-colors duration-150 ease-in-out"
+          className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
         >
-          Generate New Unique Code (New Instance)
+          Generate New Sync URL
         </button>
-        <p className="text-xs text-gray-500 mt-2 text-center">
-          This will start a fresh Kinobi instance.
-        </p>
       </div>
     </div>
   );
