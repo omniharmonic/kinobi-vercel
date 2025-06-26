@@ -287,11 +287,50 @@ function StatusView() {
 }
 // +++ END NEW COMPONENT +++
 
+// Simple Error Boundary to catch rendering errors
+class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; error: Error | null }> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    // Update state so the next render will show the fallback UI.
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    // You can also log the error to an error reporting service
+    console.error("Uncaught error:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      // You can render any custom fallback UI
+      return (
+        <div className="p-8 text-center text-red-600 bg-red-50 h-full">
+          <h1 className="text-2xl font-bold">Something went wrong.</h1>
+          <p className="mt-4">There was a critical error in the application. Please try refreshing the page.</p>
+          <pre className="mt-4 text-left bg-white p-4 rounded-md shadow-md text-sm text-gray-700 overflow-auto">
+            {this.state.error && this.state.error.toString()}
+            <br />
+            {this.state.error?.stack}
+          </pre>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
 // Wrapped App with Router
 function RoutedApp() {
   return (
     <BrowserRouter>
-      <App />
+      <ErrorBoundary>
+        <App />
+      </ErrorBoundary>
     </BrowserRouter>
   );
 }
@@ -1229,21 +1268,35 @@ function SyncSettingsView({ updateAvailable, onUpdate, currentClientVersion }: {
   currentClientVersion: string | null;
 }) {
   const syncId = useSyncId();
-  if (!syncId) return <div>Loading sync information...</div>;
+
+  if (!syncId) {
+    return <div className="p-8 text-center">Loading settings...</div>;
+  }
+  
   return (
-    <div className="p-4 sm:p-6 md:p-8 space-y-8">
-      {/* Isolate the main settings component for debugging */}
-      <SyncSettingsComponent currentSyncId={syncId} />
+    <div className="p-8 max-w-4xl mx-auto">
+      <h1 className="text-4xl font-bold mb-8">Settings</h1>
       
-      {/* The following components are temporarily disabled to find the source of the error. */}
-      {/* <ManageChoresComponent /> */}
-      {/* <ManageTendersComponent /> */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div className="bg-white p-6 rounded-lg shadow-md">
+          <SyncSettingsComponent currentSyncId={syncId} />
+        </div>
+        <div className="bg-white p-6 rounded-lg shadow-md">
+          <UpdatesComponent 
+            updateAvailable={updateAvailable} 
+            onUpdate={onUpdate} 
+            currentClientVersion={currentClientVersion} 
+          />
+        </div>
+      </div>
       
-      <UpdatesComponent 
-        updateAvailable={updateAvailable} 
-        onUpdate={onUpdate} 
-        currentClientVersion={currentClientVersion} 
-      />
+      <div className="mt-8 bg-white p-6 rounded-lg shadow-md">
+        <ManageChoresComponent />
+      </div>
+
+      <div className="mt-8 bg-white p-6 rounded-lg shadow-md">
+        <ManageTendersComponent />
+      </div>
     </div>
   );
 }
