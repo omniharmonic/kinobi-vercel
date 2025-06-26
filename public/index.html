@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kinobi - Smart Chore Tracker</title>
+  <meta name="description" content="Smart chore tracker with time cycles, point scoring, and leaderboards">
+  
+  <!-- Tailwind CSS (built locally) -->
+  <link rel="stylesheet" href="/tailwind.css">
+  
+  <!-- PWA Configuration -->
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#f59e0b">
+  
+  <!-- Apple PWA -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Kinobi">
+  
+  <!-- Favicon -->
+  <link rel="icon" type="image/x-icon" href="/kinobi_alpha.gif">
+  
+  <!-- App Version -->
+  <script>
+    window.PWA_CURRENT_APP_VERSION = 'v1.0.9-vercel';
+  </script>
+
+  <style>
+    /* Custom animations and styles for Kinobi */
+    @keyframes float {
+      0%, 100% { transform: translateY(0px); }
+      50% { transform: translateY(-10px); }
+    }
+    
+    .animate-float {
+      animation: float 3s ease-in-out infinite;
+    }
+    
+    .animate-float-delay-1 {
+      animation: float 3s ease-in-out infinite;
+      animation-delay: 0.5s;
+    }
+    
+    .animate-float-delay-2 {
+      animation: float 3s ease-in-out infinite;
+      animation-delay: 1s;
+    }
+    
+    .animate-float-delay-3 {
+      animation: float 3s ease-in-out infinite;
+      animation-delay: 1.5s;
+    }
+    
+    /* Progress ring animations */
+    .progress-ring {
+      transition: stroke-dashoffset 0.35s;
+      transform: rotate(-90deg);
+      transform-origin: 50% 50%;
+    }
+
+    /* Loading spinner */
+    .spinner {
+      border: 4px solid #f3f3f3;
+      border-top: 4px solid #f59e0b;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 2s linear infinite;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div id="root">
+    <!-- Loading fallback -->
+    <div class="flex flex-col min-h-screen bg-gradient-to-br from-amber-100 via-yellow-50 to-orange-100 items-center justify-center">
+      <img src="/kinobi_alpha.gif" alt="Kinobi" class="w-16 h-16 mb-4 animate-float">
+      <div class="text-2xl font-bold text-amber-800 mb-4">Loading Kinobi...</div>
+      <div class="spinner"></div>
+    </div>
+  </div>
+
+  <!-- Main application script -->
+  <script type="module" src="/dist/app.js"></script>
+</body>
+</html> 
