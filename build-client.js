@@ -11,22 +11,18 @@ try {
   // Read the compiled JS
   const compiledJs = readFileSync('public/main.js', 'utf8');
 
-  // Create a simple wrapper that works with our HTML setup
+  // Create a module wrapper that works with our HTML setup
   const wrappedJs = `
-(function() {
-  'use strict';
-  
-  // React and React-Router-DOM are loaded via CDN
-  const React = window.React;
-  const ReactDOM = window.ReactDOM;
-  const ReactRouterDOM = window.ReactRouterDOM;
-  
-  // Re-export for our compiled code
-  window.React = React;
-  window.ReactDOM = ReactDOM;
-  
-  ${compiledJs}
-})();
+// React and React-Router-DOM are loaded via CDN
+const React = window.React;
+const ReactDOM = window.ReactDOM;
+const ReactRouterDOM = window.ReactRouterDOM;
+
+// Re-export for our compiled code
+window.React = React;
+window.ReactDOM = ReactDOM;
+
+${compiledJs}
 `;
 
   // Write the final app.js

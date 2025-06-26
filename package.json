@@ -2,6 +2,7 @@
   "name": "kinobi-vercel",
   "version": "1.0.9",
   "description": "Smart chore tracker with time cycles, point scoring, and leaderboards - Vercel Edition",
+  "type": "module",
   "scripts": {
     "dev": "vercel dev",
     "build": "node build-client.js",
