@@ -73,9 +73,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     try {
-        const { slug } = req.query;
+        const { slug: rawSlug } = req.query;
+        let slug: string[];
 
-        if (!slug || typeof slug === 'string' || slug.length < 1) {
+        if (!rawSlug) {
+            return res.status(400).json({ error: 'Invalid API path format: slug is missing.' });
+        }
+
+        if (typeof rawSlug === 'string') {
+            slug = rawSlug.split('/');
+        } else {
+            slug = rawSlug;
+        }
+
+        if (!slug || slug.length < 1) {
             return res.status(400).json({ error: 'Invalid API path format.' });
         }
 
