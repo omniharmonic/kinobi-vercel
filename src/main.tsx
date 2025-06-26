@@ -922,6 +922,7 @@ function LeaderboardView() {
 function LeaderboardComponent() {
   const syncId = useSyncId();
   const [leaderboardData, setLeaderboardData] = useState<LeaderboardEntry[]>([]);
+  const [processedData, setProcessedData] = useState<LeaderboardEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [filterPeriod, setFilterPeriod] = useState<'all' | '7d' | '30d'>('all');
   const [sortBy, setSortBy] = useState<'points' | 'completions' | 'average'>('points');
@@ -958,9 +959,12 @@ function LeaderboardComponent() {
     fetchLeaderboardData();
   }, [fetchLeaderboardData]);
 
-  // Filter and sort leaderboard data
-  const processedData = React.useMemo(() => {
-    if (!leaderboardData || leaderboardData.length === 0) return [];
+  // Process data when filters or base data change
+  useEffect(() => {
+    if (!leaderboardData || leaderboardData.length === 0) {
+      setProcessedData([]);
+      return;
+    }
 
     // Create a deep copy to ensure the original state is never mutated.
     const dataCopy = JSON.parse(JSON.stringify(leaderboardData));
@@ -1016,7 +1020,7 @@ function LeaderboardComponent() {
       }
     });
 
-    return sortedData;
+    setProcessedData(sortedData);
   }, [leaderboardData, filterPeriod, sortBy]);
 
   // Scroll to top when data changes
