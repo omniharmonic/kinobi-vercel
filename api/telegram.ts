@@ -194,46 +194,46 @@ async function handleTenderSelection(chatId: number, choreId: string, tenderId: 
 
 async function handleLinkingToken(token: string, chatId: number) {
     try {
-        const allSyncIds = await kv.smembers('kinobi:all_sync_ids');
-        let linkEstablished = false;
+        const tokenKey = `kinobi:token:${token}`;
+        const syncId = await kv.get(tokenKey) as string | null;
 
-        for (const syncId of allSyncIds) {
-            const data: any = await kv.get(`kinobi:${syncId}`);
-            if (data && data.config) {
-                const { telegramLinkingToken, telegramLinkingTokenTimestamp } = data.config;
-                
-                // Check if token matches and is not expired (e.g., within 10 minutes)
-                if (telegramLinkingToken === token) {
-                    const now = Date.now();
-                    const tenMinutes = 10 * 60 * 1000;
-                    if (now - (telegramLinkingTokenTimestamp || 0) < tenMinutes) {
-                        // Success! Link the account.
-                        data.config.telegramUserId = chatId;
-                        data.config.telegramLinkingToken = undefined; // Clear the token
-                        data.config.telegramLinkingTokenTimestamp = undefined;
-                        
-                        await kv.set(`kinobi:${syncId}`, data);
-                        
-                        await callTelegramApi('sendMessage', {
-                            chat_id: chatId,
-                            text: '✅ Success! Your Telegram account has been linked to this Kinobi instance.',
-                        });
-                        linkEstablished = true;
-                        break; // Exit loop once found
-                    }
-                }
-            }
-        }
-
-        if (!linkEstablished) {
+        if (!syncId) {
             await callTelegramApi('sendMessage', {
                 chat_id: chatId,
                 text: '❌ Invalid or expired linking code. Please generate a new one from the app settings.',
             });
+            return;
         }
+
+        // We found a valid syncId, now retrieve the full data object
+        const dataKey = `kinobi:${syncId}`;
+        const data: any = await kv.get(dataKey);
+
+        if (!data || !data.config) {
+            await callTelegramApi('sendMessage', {
+                chat_id: chatId,
+                text: '❌ An error occurred while retrieving your data. Please try again.',
+            });
+            return;
+        }
+        
+        // Success! Link the account.
+        data.config.telegramUserId = chatId;
+        data.config.telegramLinkingToken = undefined; // Clear the token
+        data.config.telegramLinkingTokenTimestamp = undefined;
+        
+        await kv.set(dataKey, data);
+        
+        // Clean up the temporary token
+        await kv.del(tokenKey);
+
+        await callTelegramApi('sendMessage', {
+            chat_id: chatId,
+            text: '✅ Success! Your Telegram account has been linked to this Kinobi instance.',
+        });
+
     } catch (error) {
         console.error('Error in handleLinkingToken:', error);
-        // Inform the user of an internal error
         await callTelegramApi('sendMessage', {
             chat_id: chatId,
             text: 'An internal error occurred. Please try again later.',
