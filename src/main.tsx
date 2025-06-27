@@ -51,6 +51,7 @@ interface ChoreConfig {
   warningThreshold: number;      // When to show yellow (75%)
   dangerThreshold: number;       // When to show red (90%)
   pointCycle?: number; // Optional as it might not be used everywhere
+  pointsEnabled: boolean;
 }
 
 interface CountdownState {
@@ -72,6 +73,27 @@ interface LeaderboardEntry {
   score: TenderScore;
   rank: number;
   recentCompletions: HistoryEntry[];  // Last 5 completions
+}
+
+interface Reward {
+  id: string;
+  name: string;
+  description: string;
+  type: 'individual' | 'collective';
+  pointThreshold: number;
+  isAchieved: boolean;
+  achievedBy?: string;
+  achievedAt?: number;
+}
+
+interface Project {
+  id: string;
+  name: string;
+  description: string;
+  points: number;
+  status: 'todo' | 'in_progress' | 'done';
+  completedBy?: string;
+  completedAt?: number;
 }
 
 // --- New Type for Outlet Context ---
@@ -148,6 +170,7 @@ function KinobiLayout() {
   const { syncId } = useParams<{ syncId: string }>();
   const navigate = useNavigate();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [config, setConfig] = useState<ChoreConfig | null>(null);
   
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [currentClientVersion, setCurrentClientVersion] = useState<string | null>(null);
@@ -212,6 +235,24 @@ function KinobiLayout() {
     }
   }, [syncId]);
 
+  // Fetch config to determine which nav links to show
+  useEffect(() => {
+    async function fetchConfig() {
+      if (syncId) {
+        try {
+          const res = await fetch(`/api/${syncId}/config`);
+          if (res.ok) {
+            const data = await res.json();
+            setConfig(data);
+          }
+        } catch (error) {
+          console.error("Failed to fetch config for layout:", error);
+        }
+      }
+    }
+    fetchConfig();
+  }, [syncId]);
+
   // Safeguard against missing syncId
   if (!syncId) {
     return <Navigate to="/" replace />;
@@ -229,7 +270,9 @@ function KinobiLayout() {
           {/* Desktop Navigation */}
           <nav className="hidden md:flex gap-6 text-lg items-center">
             <Link to="history" className="hover:text-amber-700 transition-colors">History</Link>
-            <Link to="leaderboard" className="hover:text-amber-700 transition-colors">Leaderboard</Link>
+            <Link to="rewards" className="hover:text-amber-700 transition-colors">Rewards</Link>
+            <Link to="projects" className="hover:text-amber-700 transition-colors">Projects</Link>
+            {config?.pointsEnabled && <Link to="leaderboard" className="hover:text-amber-700 transition-colors">Leaderboard</Link>}
             <Link to="settings" className="hover:text-amber-700 transition-colors">Settings</Link>
           </nav>
           
@@ -246,7 +289,9 @@ function KinobiLayout() {
           {isMenuOpen && (
             <nav className="absolute top-full right-0 mt-2 w-48 bg-white rounded-md shadow-lg p-2 md:hidden z-10">
               <Link to="history" onClick={() => setIsMenuOpen(false)} className="block px-4 py-2 text-gray-800 hover:bg-amber-100 rounded">History</Link>
-              <Link to="leaderboard" onClick={() => setIsMenuOpen(false)} className="block px-4 py-2 text-gray-800 hover:bg-amber-100 rounded">Leaderboard</Link>
+              <Link to="rewards" onClick={() => setIsMenuOpen(false)} className="block px-4 py-2 text-gray-800 hover:bg-amber-100 rounded">Rewards</Link>
+              <Link to="projects" onClick={() => setIsMenuOpen(false)} className="block px-4 py-2 text-gray-800 hover:bg-amber-100 rounded">Projects</Link>
+              {config?.pointsEnabled && <Link to="leaderboard" onClick={() => setIsMenuOpen(false)} className="block px-4 py-2 text-gray-800 hover:bg-amber-100 rounded">Leaderboard</Link>}
               <Link to="settings" onClick={() => setIsMenuOpen(false)} className="block px-4 py-2 text-gray-800 hover:bg-amber-100 rounded">Settings</Link>
             </nav>
           )}
@@ -330,17 +375,14 @@ function RoutedApp() {
       <ErrorBoundary>
         <Routes>
           <Route path="/" element={<RootRedirector />} />
-          <Route path="/status" element={<StatusView />} />
-          <Route path="/:syncId/*" element={<KinobiLayout />}>
+          <Route path="/:syncId" element={<KinobiLayout />}>
             <Route index element={<KinobiView />} />
             <Route path="history" element={<HistoryView />} />
-            <Route path="leaderboard" element={<LeaderboardView />} />
-            <Route
-              path="settings"
-              element={
-                <SyncSettingsViewRouter />
-              }
-            />
+            <Route path="leaderboard" element={<LeaderboardContainer />} />
+            <Route path="rewards" element={<RewardsView />} />
+            <Route path="projects" element={<ProjectsView />} />
+            <Route path="settings" element={<SyncSettingsViewRouter />} />
+            <Route path="status" element={<StatusView />} />
           </Route>
           {/* A better catch-all to redirect invalid paths to the root */}
           <Route path="*" element={<Navigate to="/" replace />} />
@@ -1246,39 +1288,70 @@ function SyncSettingsView({ updateAvailable, onUpdate, currentClientVersion }: {
   currentClientVersion: string | null;
 }) {
   const syncId = useSyncId();
+  const [config, setConfig] = useState<ChoreConfig | null>(null);
 
-  if (!syncId) {
-    return <div className="p-8 text-center">Loading settings...</div>;
-  }
-  
+  useEffect(() => {
+    async function fetchConfig() {
+      if (syncId) {
+        try {
+          const res = await fetch(`/api/${syncId}/config`);
+          if (res.ok) {
+            const data = await res.json();
+            setConfig(data);
+          }
+        } catch (error) {
+          console.error("Failed to fetch config:", error);
+        }
+      }
+    }
+    fetchConfig();
+  }, [syncId]);
+
+  const handleConfigChange = async (newConfig: Partial<ChoreConfig>) => {
+    if (syncId && config) {
+        try {
+            const res = await fetch(`/api/${syncId}/config`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(newConfig),
+            });
+            if (res.ok) {
+                setConfig({ ...config, ...newConfig });
+                // Optionally show a success message
+            }
+        } catch (error) {
+            console.error("Failed to update config:", error);
+        }
+    }
+  };
+
+  if (!syncId) return <div>Loading...</div>;
+
   return (
-    <div className="p-8 max-w-4xl mx-auto">
-      <h1 className="text-4xl font-bold mb-8">Settings</h1>
+    <div className="space-y-12">
+      <h1 className="text-4xl font-bold text-amber-800 text-center">Settings</h1>
       
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        <div className="bg-white p-6 rounded-lg shadow-md">
-          <SyncSettingsComponent currentSyncId={syncId} />
-        </div>
-        <div className="bg-white p-6 rounded-lg shadow-md">
-          <UpdatesComponent 
-            updateAvailable={updateAvailable} 
-            onUpdate={onUpdate} 
-            currentClientVersion={currentClientVersion} 
-          />
-        </div>
-      </div>
-      
-      <div className="mt-8 bg-white p-6 rounded-lg shadow-md">
-        <ManageChoresComponent />
+      <div className="bg-white/60 p-6 rounded-lg shadow-md border-2 border-amber-200">
+        <h2 className="text-2xl font-semibold text-amber-700 mb-4">Gamification</h2>
+        {config && (
+            <div className="flex items-center justify-between">
+                <span className="text-lg">Enable Points & Leaderboard</span>
+                <label className="relative inline-flex items-center cursor-pointer">
+                    <input 
+                        type="checkbox" 
+                        checked={config.pointsEnabled} 
+                        onChange={(e) => handleConfigChange({ pointsEnabled: e.target.checked })}
+                        className="sr-only peer" 
+                    />
+                    <div className="w-11 h-6 bg-gray-200 rounded-full peer peer-focus:ring-4 peer-focus:ring-amber-300 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-500"></div>
+                </label>
+            </div>
+        )}
       </div>
 
-      <div className="mt-8 bg-white p-6 rounded-lg shadow-md">
-        <ManageTendersComponent />
-      </div>
-
-      <div className="mt-8 bg-white p-6 rounded-lg shadow-md">
-        <TelegramSettingsComponent />
-      </div>
+      <ManageChoresComponent />
+      <ManageTendersComponent />
+      <TelegramSettingsComponent />
     </div>
   );
 }
@@ -1524,28 +1597,25 @@ function ManageChoresComponent() {
   const [chores, setChores] = useState<Chore[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [newChoreName, setNewChoreName] = useState("");
-  const [newChoreIcon, setNewChoreIcon] = useState("");
+  const [newChoreIcon, setNewChoreIcon] = useState("❓");
   const [newCycleDuration, setNewCycleDuration] = useState<number>(24);
   const [newPoints, setNewPoints] = useState<number>(10);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingChore, setEditingChore] = useState<Chore | null>(null);
-  const dragItem = React.useRef<number | null>(null);
-  const dragOverItem = React.useRef<number | null>(null);
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
 
   const fetchChoresInternal = useCallback(async () => {
-    if (!syncId) return;
-    setIsLoading(true);
-    try {
-      const response = await fetch(`/api/${syncId}/chores`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch chores');
+    if (syncId) {
+      setIsLoading(true);
+      try {
+        const res = await fetch(`/api/${syncId}/chores`);
+        if (res.ok) {
+          setChores(await res.json());
+        }
+      } catch (error) {
+        console.error("Failed to fetch chores:", error);
       }
-      setChores(await response.json());
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
       setIsLoading(false);
     }
   }, [syncId]);
@@ -1554,7 +1624,44 @@ function ManageChoresComponent() {
     fetchChoresInternal();
   }, [fetchChoresInternal]);
 
-  async function handleAddChore() {
+  const handleOpenModal = (chore: Chore) => {
+    setEditingChore(chore);
+    setIsModalOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    setEditingChore(null);
+    setIsModalOpen(false);
+  };
+
+  async function handleSaveChore(choreData: Partial<Chore>) {
+    if (!syncId || !editingChore) return;
+
+    const choreToSave = { ...editingChore, ...choreData };
+    const url = `/api/${syncId}/chores/${editingChore.id}`;
+    
+    setIsProcessing(true);
+    try {
+        const res = await fetch(url, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(choreToSave),
+        });
+        if (res.ok) {
+            fetchChoresInternal();
+            handleCloseModal();
+        } else {
+            console.error("Failed to save chore");
+        }
+    } catch (error) {
+        console.error("Error saving chore:", error);
+    } finally {
+        setIsProcessing(false);
+    }
+  }
+
+  async function handleAddChore(e: React.FormEvent) {
+    e.preventDefault();
     if (!syncId || !newChoreName.trim() || !newChoreIcon.trim()) return;
     setIsProcessing(true);
     try {
@@ -1565,108 +1672,21 @@ function ManageChoresComponent() {
           name: newChoreName.trim(), 
           icon: newChoreIcon.trim(),
           cycleDuration: newCycleDuration,
-          points: newPoints
+          points: newPoints,
         }),
       });
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+        throw new Error('Failed to add chore');
       }
       setNewChoreName("");
-      setNewChoreIcon("");
+      setNewChoreIcon("❓");
       setNewCycleDuration(24);
       setNewPoints(10);
-      fetchChoresInternal(); // Refresh chores
+      fetchChoresInternal();
     } catch (error) {
-      console.error("Error adding chore:", error);
+      console.error("Failed to add chore:", error);
     } finally {
       setIsProcessing(false);
-    }
-  }
-
-  async function handleRenameChore(choreId: string, currentName: string, currentIcon: string) {
-    if (!syncId || !choreId) return;
-    const newName = prompt("Enter new name for " + currentName + ":", currentName);
-    if (newName && newName.trim() && newName.trim() !== currentName) {
-      setIsProcessing(true);
-      try {
-        await fetch(`/api/${syncId}/chores/${choreId}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: newName.trim(), icon: currentIcon }),
-        });
-        fetchChoresInternal(); // Refresh
-      } catch (error) {
-        console.error("Error renaming chore:", error);
-      } finally {
-        setIsProcessing(false);
-      }
-    }
-  }
-
-  async function handleChangeIcon(choreId: string, currentName: string, currentIcon: string) {
-    if (!syncId || !choreId) return;
-    const newIcon = prompt("Enter new icon for " + currentName + ":", currentIcon);
-    if (newIcon && newIcon.trim() && newIcon.trim() !== currentIcon) {
-      setIsProcessing(true);
-      try {
-        await fetch(`/api/${syncId}/chores/${choreId}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: currentName, icon: newIcon.trim() }),
-        });
-        fetchChoresInternal(); // Refresh
-      } catch (error) {
-        console.error("Error changing chore icon:", error);
-      } finally {
-        setIsProcessing(false);
-      }
-    }
-  }
-
-  async function handleEditCycle(choreId: string, currentCycleDuration: number) {
-    if (!syncId || !choreId) return;
-    const newCycleStr = prompt(`Enter new cycle duration in hours for this chore:`, currentCycleDuration.toString());
-    if (newCycleStr) {
-      const newCycle = parseInt(newCycleStr);
-      if (!isNaN(newCycle) && newCycle > 0 && newCycle !== currentCycleDuration) {
-        setIsProcessing(true);
-        try {
-          await fetch(`/api/${syncId}/chores/${choreId}`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ cycleDuration: newCycle }),
-          });
-          fetchChoresInternal(); // Refresh
-        } catch (error) {
-          console.error("Error updating cycle duration:", error);
-        } finally {
-          setIsProcessing(false);
-        }
-      }
-    }
-  }
-
-  async function handleEditPoints(choreId: string, currentPoints: number) {
-    if (!syncId || !choreId) return;
-    const newPointsStr = prompt(`Enter new points value for this chore:`, currentPoints.toString());
-    if (newPointsStr) {
-      const newPoints = parseInt(newPointsStr);
-      if (!isNaN(newPoints) && newPoints > 0 && newPoints !== currentPoints) {
-        setIsProcessing(true);
-        try {
-          await fetch(`/api/${syncId}/chores/${choreId}`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ points: newPoints }),
-          });
-          fetchChoresInternal(); // Refresh
-        } catch (error) {
-          console.error("Error updating points:", error);
-        } finally {
-          setIsProcessing(false);
-        }
-      }
     }
   }
 
@@ -1676,15 +1696,14 @@ function ManageChoresComponent() {
     setIsProcessing(true);
     try {
       await fetch(`/api/${syncId}/chores/${choreId}`, { method: "DELETE" });
-      fetchChoresInternal(); // Refresh
+      fetchChoresInternal();
     } catch (error) {
-      console.error("Error deleting chore:", error);
+      console.error("Failed to delete chore:", error);
     } finally {
       setIsProcessing(false);
     }
   }
 
-  // Drag and drop handlers
   const handleDragStart = (e: React.DragEvent, index: number) => {
     setDraggedIndex(index);
     e.dataTransfer.effectAllowed = "move";
@@ -1697,39 +1716,27 @@ function ManageChoresComponent() {
 
   const handleDrop = async (e: React.DragEvent, dropIndex: number) => {
     e.preventDefault();
-    
     if (draggedIndex === null || draggedIndex === dropIndex) {
       setDraggedIndex(null);
       return;
     }
 
+    const newChores = [...chores];
+    const draggedChore = newChores[draggedIndex];
+    newChores.splice(draggedIndex, 1);
+    newChores.splice(dropIndex, 0, draggedChore);
+    setChores(newChores); // Optimistic update
+
     setIsProcessing(true);
-    
     try {
-      // Create a new array with reordered chores
-      const newChores = [...chores];
-      const draggedChore = newChores[draggedIndex];
-      
-      // Remove the dragged item
-      newChores.splice(draggedIndex, 1);
-      
-      // Insert it at the new position
-      newChores.splice(dropIndex, 0, draggedChore);
-      
-      // Update the local state immediately for responsive UI
-      setChores(newChores);
-      
-      // Send all chores in new order to the server
       await fetch(`/api/${syncId}/chores/reorder`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ chores: newChores }),
       });
-      
     } catch (error) {
       console.error("Error reordering chores:", error);
-      // Revert on error
-      fetchChoresInternal();
+      fetchChoresInternal(); // Revert on error
     } finally {
       setIsProcessing(false);
       setDraggedIndex(null);
@@ -1740,173 +1747,132 @@ function ManageChoresComponent() {
     setDraggedIndex(null);
   };
 
-  if (isLoading) {
-    return (
-      <div className="text-2xl mt-6 text-amber-700">
-        Loading chores...
-        <span>.</span>
-        <span>.</span>
-        <span>.</span>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="text-red-500 text-center">
-        Error: {error}
-      </div>
-    );
-  }
-
   return (
-    <div className={`mt-6 ${isProcessing ? "opacity-50 pointer-events-none" : ""}`}>
-      <section className="p-4 bg-gradient-to-br from-yellow-50 to-amber-50 rounded-lg shadow-lg border-2 border-amber-200">
-        <h3 className="text-xl mb-3 font-semibold text-amber-700">🎯 Manage Chores</h3>
-        {chores.length === 0 && !isLoading
-          ? <p className="text-amber-600">No chores added yet.</p>
-          : null}
-        <div className="mb-4 text-sm text-amber-600 bg-amber-50 p-2 rounded border">
-          💡 <strong>Tip:</strong> Drag and drop chores to reorder them. The order here determines how they appear on the main page.
-        </div>
-        <ul className="space-y-2">
-          {chores.map((chore: any, index: number) => (
-            <li
-              key={chore.id}
-              draggable={!isProcessing}
-              onDragStart={(e) => handleDragStart(e, index)}
-              onDragOver={handleDragOver}
-              onDrop={(e) => handleDrop(e, index)}
-              onDragEnd={handleDragEnd}
-              className={`flex items-center justify-between p-3 bg-amber-50 rounded border border-amber-200 transition-all duration-200 ${
-                draggedIndex === index 
-                  ? "opacity-50 scale-95 border-amber-400 shadow-lg" 
-                  : "hover:shadow-md hover:border-amber-300 cursor-move"
-              } ${isProcessing ? "pointer-events-none opacity-60" : ""}`}
-            >
-              <div className="flex items-center gap-3">
-                <div className="flex flex-col items-center text-amber-400">
-                  <span className="text-xs leading-none">⋮⋮</span>
-                  <span className="text-xs leading-none">⋮⋮</span>
+    <section className={`p-4 bg-gradient-to-br from-yellow-50 to-amber-50 rounded-lg shadow-lg border-2 border-amber-200 ${isProcessing ? "opacity-50 pointer-events-none" : ""}`}>
+      <h3 className="text-xl mb-3 font-semibold text-amber-700">🔨 Manage Chores</h3>
+      
+      {isLoading ? <p>Loading chores...</p> : (
+        <>
+          <div className="mb-4 text-sm text-amber-600 bg-amber-50 p-2 rounded border">
+            💡 <strong>Tip:</strong> Drag and drop chores to reorder them.
+          </div>
+          <div className="space-y-2">
+            {chores.map((chore, index) => (
+              <div
+                key={chore.id}
+                className={`flex items-center justify-between p-3 bg-amber-50 rounded border border-amber-200 transition-all duration-200 ${draggedIndex === index ? "opacity-50 scale-95 border-amber-400 shadow-lg" : "hover:shadow-md hover:border-amber-300 cursor-move"}`}
+                draggable={!isProcessing}
+                onDragStart={(e) => handleDragStart(e, index)}
+                onDragOver={handleDragOver}
+                onDrop={(e) => handleDrop(e, index)}
+                onDragEnd={handleDragEnd}
+              >
+                <div className="flex items-center gap-3">
+                    <span className="text-gray-400">::</span>
+                    <span className="text-2xl">{chore.icon}</span>
+                    <div className="flex flex-col">
+                        <span className="font-medium">{chore.name}</span>
+                        <span className="text-xs text-gray-500">({chore.cycleDuration}h, {chore.points}pts)</span>
+                    </div>
                 </div>
-                <span className="text-2xl">{chore.icon}</span>
-                <div className="flex flex-col">
-                  <span className="text-amber-800 font-medium">{chore.name}</span>
-                  <div className="flex gap-4 text-xs text-amber-600">
-                    <span>🔄 {chore.cycleDuration || 24}h cycle</span>
-                    <span>⭐ {chore.points || 10} points</span>
-                  </div>
+                <div className="flex gap-2">
+                    <button onClick={() => handleOpenModal(chore)} className="text-sm font-semibold text-blue-600 hover:text-blue-800" disabled={isProcessing}>Edit</button>
+                    <button onClick={() => handleDeleteChore(chore.id, chore.name)} className="text-sm font-semibold text-red-600 hover:text-red-800" disabled={isProcessing}>Delete</button>
                 </div>
               </div>
-              <div className="space-x-2">
-                <button
-                  onClick={() => handleEditCycle(chore.id, chore.cycleDuration || 24)}
-                  className="text-sm text-green-500 hover:text-green-700"
-                  disabled={isProcessing}
-                >
-                  🕐 Cycle
-                </button>
-                <button
-                  onClick={() => handleEditPoints(chore.id, chore.points || 10)}
-                  className="text-sm text-purple-500 hover:text-purple-700"
-                  disabled={isProcessing}
-                >
-                  ⭐ Points
-                </button>
-                <button
-                  onClick={() => handleChangeIcon(chore.id, chore.name, chore.icon)}
-                  className="text-sm text-blue-500 hover:text-blue-700"
-                  disabled={isProcessing}
-                >
-                  🎨 Icon
-                </button>
-                <button
-                  onClick={() => handleRenameChore(chore.id, chore.name, chore.icon)}
-                  className="text-sm text-blue-500 hover:text-blue-700"
-                  disabled={isProcessing}
-                >
-                  ✏️ Rename
-                </button>
-                <button
-                  onClick={() => handleDeleteChore(chore.id, chore.name)}
-                  className="text-sm text-red-500 hover:text-red-700"
-                  disabled={isProcessing}
-                >
-                  ❌ Delete
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
-        <div className="mt-4 space-y-2">
-          <div className="flex gap-2">
+            ))}
+          </div>
+        </>
+      )}
+
+      <form onSubmit={handleAddChore} className="mt-6 border-t-2 border-amber-200 pt-4 space-y-3">
+          <h4 className="font-semibold text-amber-800">Add New Chore</h4>
+          <div className="flex gap-2 items-start">
             <input
-              id="new-chore-icon"
-              name="new-chore-icon"
               type="text"
               value={newChoreIcon}
               onChange={(e) => setNewChoreIcon(e.target.value)}
-              placeholder="Icon"
-              className="w-20 border border-amber-300 rounded px-2 py-1 focus:ring-amber-500 focus:border-amber-500 bg-yellow-50 text-center text-2xl"
-              disabled={isProcessing}
+              placeholder="❓"
+              className="w-20 border border-amber-300 rounded px-2 py-2 text-center text-2xl bg-yellow-50"
               maxLength={2}
             />
-            <input
-              id="new-chore-name"
-              name="new-chore-name"
-              type="text"
-              value={newChoreName}
-              onChange={(e) => setNewChoreName(e.target.value)}
-              placeholder="New chore name"
-              className="flex-grow border border-amber-300 rounded px-2 py-1 focus:ring-amber-500 focus:border-amber-500 bg-yellow-50"
-              disabled={isProcessing}
-            />
-          </div>
-          <div className="flex gap-2">
-            <div className="flex-1">
-              <label htmlFor="new-chore-cycle" className="block text-xs text-amber-700 mb-1">Cycle Duration (hours)</label>
-              <input
-                id="new-chore-cycle"
-                name="new-chore-cycle"
-                type="number"
-                value={newCycleDuration}
-                onChange={(e) => setNewCycleDuration(Math.max(1, parseInt(e.target.value) || 1))}
-                placeholder="24"
-                min="1"
-                max="8760"
-                className="w-full border border-amber-300 rounded px-2 py-1 focus:ring-amber-500 focus:border-amber-500 bg-yellow-50"
-                disabled={isProcessing}
-              />
-            </div>
-            <div className="flex-1">
-              <label htmlFor="new-chore-points" className="block text-xs text-amber-700 mb-1">Points</label>
-              <input
-                id="new-chore-points"
-                name="new-chore-points"
-                type="number"
-                value={newPoints}
-                onChange={(e) => setNewPoints(Math.max(1, parseInt(e.target.value) || 1))}
-                placeholder="10"
-                min="1"
-                max="1000"
-                className="w-full border border-amber-300 rounded px-2 py-1 focus:ring-amber-500 focus:border-amber-500 bg-yellow-50"
-                disabled={isProcessing}
-              />
-            </div>
-            <div className="flex-1 flex items-end">
-              <button
-                onClick={handleAddChore}
-                className="w-full bg-amber-500 hover:bg-amber-600 text-white px-4 py-1 rounded disabled:opacity-50 font-semibold"
-                disabled={isProcessing || !newChoreName.trim() || !newChoreIcon.trim()}
-              >
-                {isProcessing ? "Adding..." : "Add Chore"}
-              </button>
+            <div className="flex-grow">
+                <input
+                    type="text"
+                    value={newChoreName}
+                    onChange={(e) => setNewChoreName(e.target.value)}
+                    placeholder="New chore name"
+                    className="w-full border border-amber-300 rounded px-3 py-2 bg-yellow-50"
+                    required
+                />
+                <div className="flex gap-2 mt-2">
+                    <div className="flex-1">
+                        <label className="block text-xs text-amber-700 mb-1">Cycle (hrs)</label>
+                        <input type="number" value={newCycleDuration} onChange={e => setNewCycleDuration(Number(e.target.value))} min="1" className="w-full border border-amber-300 rounded px-3 py-2 bg-yellow-50" required />
+                    </div>
+                    <div className="flex-1">
+                        <label className="block text-xs text-amber-700 mb-1">Points</label>
+                        <input type="number" value={newPoints} onChange={e => setNewPoints(Number(e.target.value))} min="0" className="w-full border border-amber-300 rounded px-3 py-2 bg-yellow-50" required />
+                    </div>
+                </div>
             </div>
           </div>
-        </div>
-      </section>
-    </div>
+          <button type="submit" className="w-full bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded font-semibold" disabled={isProcessing || !newChoreName.trim()}>
+              {isProcessing ? 'Adding...' : 'Add Chore'}
+          </button>
+      </form>
+      
+      {isModalOpen && editingChore && (
+        <ChoreEditModal
+            chore={editingChore}
+            onClose={handleCloseModal}
+            onSave={handleSaveChore}
+        />
+      )}
+    </section>
   );
+}
+
+function ChoreEditModal({ chore, onClose, onSave }: { chore: Chore; onClose: () => void; onSave: (data: Partial<Chore>) => void; }) {
+    const [name, setName] = useState(chore.name);
+    const [icon, setIcon] = useState(chore.icon);
+    const [cycleDuration, setCycleDuration] = useState(chore.cycleDuration);
+    const [points, setPoints] = useState(chore.points);
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        onSave({ name, icon, cycleDuration, points });
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50" onClick={onClose}>
+            <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+                <h2 className="text-2xl font-bold mb-6">Edit Chore</h2>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700">Chore Name</label>
+                        <input type="text" value={name} onChange={e => setName(e.target.value)} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3" required />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700">Icon</label>
+                        <input type="text" value={icon} onChange={e => setIcon(e.target.value)} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3" required />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700">Cycle Duration (hours)</label>
+                        <input type="number" value={cycleDuration} onChange={e => setCycleDuration(Number(e.target.value))} min="1" className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3" required />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700">Points</label>
+                        <input type="number" value={points} onChange={e => setPoints(Number(e.target.value))} min="0" className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3" required />
+                    </div>
+                    <div className="flex justify-end gap-4 pt-4">
+                        <button type="button" onClick={onClose} className="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded">Cancel</button>
+                        <button type="submit" className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded">Save Changes</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
 }
 
 function ManageTendersComponent() {
@@ -2413,3 +2379,455 @@ function TimeDisplay({ countdownState, format = 'compact' }: TimeDisplayProps) {
 
 // DEPLOYMENT MARKER - if you see this comment in browser dev tools, the latest code deployed
 console.log('🚀 Kinobi Vercel - Deployed at:', new Date().toISOString());
+
+// --- New Component: RewardsView ---
+function RewardsView() {
+  const syncId = useSyncId();
+  const [rewards, setRewards] = useState<Reward[]>([]);
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingReward, setEditingReward] = useState<Reward | null>(null);
+
+  const fetchData = useCallback(async () => {
+    if (!syncId) return;
+    setIsLoading(true);
+    try {
+      const [rewardsRes, leaderboardRes] = await Promise.all([
+        fetch(`/api/${syncId}/rewards`),
+        fetch(`/api/${syncId}/leaderboard`),
+      ]);
+      if (rewardsRes.ok) {
+        const rewardsData = await rewardsRes.json();
+        setRewards(rewardsData);
+      }
+      if (leaderboardRes.ok) {
+          const leaderboardData = await leaderboardRes.json();
+          setLeaderboard(leaderboardData);
+      }
+    } catch (error) {
+      console.error("Failed to fetch rewards data:", error);
+    }
+    setIsLoading(false);
+  }, [syncId]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  const handleOpenModal = (reward: Reward | null = null) => {
+    setEditingReward(reward);
+    setIsModalOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setEditingReward(null);
+  };
+
+  const handleSaveReward = async (rewardData: Partial<Reward>) => {
+    if (!syncId) return;
+    const url = editingReward
+      ? `/api/${syncId}/rewards/${editingReward.id}`
+      : `/api/${syncId}/rewards`;
+    const method = editingReward ? 'PUT' : 'POST';
+
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editingReward ? rewardData : {
+          ...rewardData,
+          id: `reward_${Date.now()}`,
+          isAchieved: false,
+        }),
+      });
+      if (res.ok) {
+        // Refresh data to show the latest state
+        fetchData();
+        handleCloseModal();
+      }
+    } catch (error) {
+      console.error("Failed to save reward:", error);
+    }
+  };
+
+  const handleDeleteReward = async (rewardId: string) => {
+    if (!syncId || !window.confirm("Are you sure you want to delete this reward?")) return;
+    try {
+      const res = await fetch(`/api/${syncId}/rewards/${rewardId}`, { method: 'DELETE' });
+      if (res.ok) {
+        setRewards(rewards.filter(r => r.id !== rewardId));
+      }
+    } catch (error) {
+      console.error("Failed to delete reward:", error);
+    }
+  };
+  
+  const getProgress = (reward: Reward): { current: number, target: number } => {
+    if (reward.type === 'collective') {
+        const collectiveScore = leaderboard.reduce((sum, entry) => sum + entry.score.totalPoints, 0);
+        return { current: collectiveScore, target: reward.pointThreshold };
+    } else { // individual
+        const maxScore = Math.max(0, ...leaderboard.map(entry => entry.score.totalPoints));
+        return { current: maxScore, target: reward.pointThreshold };
+    }
+  };
+
+  return (
+    <div className="p-8 max-w-7xl mx-auto">
+      <div className="flex justify-between items-center mb-8">
+        <h1 className="text-4xl font-bold text-amber-800">Rewards</h1>
+        <button
+          onClick={() => handleOpenModal()}
+          className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-transform transform hover:scale-105"
+        >
+          ✨ Add New Reward
+        </button>
+      </div>
+
+      {isLoading && <p>Loading rewards...</p>}
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        {rewards.map(reward => {
+          const { current, target } = getProgress(reward);
+          const progressPercentage = target > 0 ? (current / target) * 100 : 0;
+          
+          return (
+            <div key={reward.id} className={`p-6 rounded-lg shadow-lg border-2 ${reward.isAchieved ? 'bg-green-100 border-green-300' : 'bg-white/70 border-amber-200'}`}>
+              <div className="flex justify-between items-start">
+                  <div>
+                      <span className={`px-3 py-1 text-xs font-semibold rounded-full ${reward.type === 'collective' ? 'bg-blue-200 text-blue-800' : 'bg-purple-200 text-purple-800'}`}>
+                          {reward.type.charAt(0).toUpperCase() + reward.type.slice(1)}
+                      </span>
+                      {reward.isAchieved && (
+                          <span className="ml-2 px-3 py-1 text-xs font-semibold rounded-full bg-yellow-400 text-yellow-900">
+                              🏆 Unlocked!
+                          </span>
+                      )}
+                  </div>
+                  <div className="flex gap-2">
+                      <button onClick={() => handleOpenModal(reward)} className="text-sm text-gray-500 hover:text-blue-600">Edit</button>
+                      <button onClick={() => handleDeleteReward(reward.id)} className="text-sm text-gray-500 hover:text-red-600">Delete</button>
+                  </div>
+              </div>
+              
+              <h2 className="text-2xl font-bold text-amber-800 mt-4">{reward.name}</h2>
+              <p className="text-gray-600 mt-2 mb-4">{reward.description}</p>
+              
+              <div className="w-full bg-gray-200 rounded-full h-2.5">
+                  <div className="bg-gradient-to-r from-yellow-400 to-orange-500 h-2.5 rounded-full" style={{ width: `${Math.min(progressPercentage, 100)}%` }}></div>
+              </div>
+              <div className="flex justify-between text-sm font-medium text-amber-700 mt-1">
+                  <span>{current}</span>
+                  <span>{target} PTS</span>
+              </div>
+              {reward.isAchieved && reward.achievedAt && (
+                  <p className="text-xs text-green-700 mt-2">
+                      Achieved {reward.achievedBy ? `by ${reward.achievedBy} ` : ''}on {new Date(reward.achievedAt).toLocaleDateString()}
+                  </p>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {isModalOpen && (
+        <RewardModal
+          reward={editingReward}
+          onClose={handleCloseModal}
+          onSave={handleSaveReward}
+        />
+      )}
+    </div>
+  );
+}
+
+function RewardModal({ reward, onClose, onSave }: { reward: Reward | null; onClose: () => void; onSave: (data: Partial<Reward>) => void; }) {
+  const [name, setName] = useState(reward?.name || '');
+  const [description, setDescription] = useState(reward?.description || '');
+  const [type, setType] = useState<'individual' | 'collective'>(reward?.type || 'collective');
+  const [pointThreshold, setPointThreshold] = useState(reward?.pointThreshold || 100);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSave({ name, description, type, pointThreshold });
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50" onClick={onClose}>
+        <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+            <h2 className="text-2xl font-bold mb-6">{reward ? 'Edit Reward' : 'Add New Reward'}</h2>
+            <form onSubmit={handleSubmit} className="space-y-4">
+                <div>
+                    <label className="block text-sm font-medium text-gray-700">Reward Name</label>
+                    <input type="text" value={name} onChange={e => setName(e.target.value)} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-amber-500 focus:border-amber-500" required />
+                </div>
+                <div>
+                    <label className="block text-sm font-medium text-gray-700">Description</label>
+                    <textarea value={description} onChange={e => setDescription(e.target.value)} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-amber-500 focus:border-amber-500" rows={3}></textarea>
+                </div>
+                <div>
+                    <label className="block text-sm font-medium text-gray-700">Reward Type</label>
+                    <select value={type} onChange={e => setType(e.target.value as any)} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-amber-500 focus:border-amber-500">
+                        <option value="collective">Collective (Whole Team)</option>
+                        <option value="individual">Individual (First to Goal)</option>
+                    </select>
+                </div>
+                <div>
+                    <label className="block text-sm font-medium text-gray-700">Point Threshold</label>
+                    <input type="number" value={pointThreshold} onChange={e => setPointThreshold(parseInt(e.target.value) || 0)} min="1" className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-amber-500 focus:border-amber-500" required />
+                </div>
+                <div className="flex justify-end gap-4 pt-4">
+                    <button type="button" onClick={onClose} className="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded">Cancel</button>
+                    <button type="submit" className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded">Save Reward</button>
+                </div>
+            </form>
+        </div>
+    </div>
+  );
+}
+
+function ProjectsView() {
+    const syncId = useSyncId();
+    const [projects, setProjects] = useState<Project[]>([]);
+    const [tenders, setTenders] = useState<Tender[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isCompletionModalOpen, setIsCompletionModalOpen] = useState(false);
+    const [editingProject, setEditingProject] = useState<Project | null>(null);
+    const [completingProject, setCompletingProject] = useState<Project | null>(null);
+
+    const fetchData = useCallback(async () => {
+        if (!syncId) return;
+        setIsLoading(true);
+        try {
+            const [projectsRes, tendersRes] = await Promise.all([
+                fetch(`/api/${syncId}/projects`),
+                fetch(`/api/${syncId}/tenders`),
+            ]);
+            
+            if (projectsRes.ok) {
+                const data = await projectsRes.json();
+                setProjects(data);
+            }
+            if (tendersRes.ok) {
+                const data = await tendersRes.json();
+                setTenders(data);
+            }
+        } catch (error) {
+            console.error("Failed to fetch projects or tenders:", error);
+        }
+        setIsLoading(false);
+    }, [syncId]);
+
+    useEffect(() => {
+        fetchData();
+    }, [fetchData]);
+
+    const handleOpenModal = (project: Project | null = null) => {
+        setEditingProject(project);
+        setIsModalOpen(true);
+    };
+
+    const handleCloseModal = () => {
+        setIsModalOpen(false);
+        setEditingProject(null);
+    };
+
+    const handleSaveProject = async (projectData: Partial<Project>) => {
+        if (!syncId) return;
+        const url = editingProject
+            ? `/api/${syncId}/projects/${editingProject.id}`
+            : `/api/${syncId}/projects`;
+        const method = editingProject ? 'PUT' : 'POST';
+
+        try {
+            const res = await fetch(url, {
+                method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(editingProject ? projectData : {
+                    ...projectData,
+                    id: `proj_${Date.now()}`,
+                    status: 'todo',
+                }),
+            });
+            if (res.ok) {
+                fetchData(); // Refetch all projects to get the latest state
+                handleCloseModal();
+            }
+        } catch (error) {
+            console.error("Failed to save project:", error);
+        }
+    };
+
+    const handleDeleteProject = async (projectId: string) => {
+        if (!syncId || !window.confirm("Are you sure you want to delete this project?")) return;
+        try {
+            const res = await fetch(`/api/${syncId}/projects/${projectId}`, { method: 'DELETE' });
+            if (res.ok) {
+                setProjects(projects.filter(p => p.id !== projectId));
+            }
+        } catch (error) {
+            console.error("Failed to delete project:", error);
+        }
+    };
+    
+    const handleOpenCompletionModal = (project: Project) => {
+        setCompletingProject(project);
+        setIsCompletionModalOpen(true);
+    };
+
+    const handleCloseCompletionModal = () => {
+        setCompletingProject(null);
+        setIsCompletionModalOpen(false);
+    };
+
+    const handleCompleteProject = async (tenderId: string) => {
+        if (!syncId || !completingProject) return;
+        try {
+            const res = await fetch(`/api/${syncId}/projects/${completingProject.id}/complete`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tenderId }),
+            });
+            if (res.ok) {
+                fetchData(); // Refresh data
+                handleCloseCompletionModal();
+            } else {
+                console.error("Failed to complete project:", await res.text());
+            }
+        } catch (error) {
+            console.error("Error completing project:", error);
+        }
+    };
+
+    return (
+        <div className="p-8 max-w-7xl mx-auto">
+            <div className="flex justify-between items-center mb-8">
+                <h1 className="text-4xl font-bold text-amber-800">Special Projects</h1>
+                <button
+                    onClick={() => handleOpenModal()}
+                    className="bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-transform transform hover:scale-105"
+                >
+                    + Add New Project
+                </button>
+            </div>
+
+            {isLoading ? (
+                <p>Loading projects...</p>
+            ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {projects.map(project => (
+                        <div key={project.id} className="p-6 rounded-lg shadow-lg bg-white/70 border-2 border-amber-200 flex flex-col justify-between">
+                            <div>
+                                <div className="flex justify-between items-center">
+                                    <span className="text-xs font-semibold px-2 py-1 bg-gray-200 text-gray-800 rounded-full">{project.status}</span>
+                                    <span className="text-lg font-bold text-amber-600">⭐ {project.points}</span>
+                                </div>
+                                <h2 className="text-xl font-bold text-amber-800 mt-4">{project.name}</h2>
+                                <p className="text-gray-600 mt-2 text-sm">{project.description}</p>
+                            </div>
+                            <div className="flex justify-end gap-2 mt-4">
+                                {project.status !== 'done' && (
+                                    <button onClick={() => handleOpenCompletionModal(project)} className="text-sm font-semibold text-white bg-green-500 hover:bg-green-600 px-3 py-1 rounded-md shadow-sm">Complete</button>
+                                )}
+                                <button onClick={() => handleOpenModal(project)} className="text-sm text-gray-500 hover:text-blue-600">Edit</button>
+                                <button onClick={() => handleDeleteProject(project.id)} className="text-sm text-gray-500 hover:text-red-600">Delete</button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            {isModalOpen && (
+                <ProjectModal
+                    project={editingProject}
+                    onClose={handleCloseModal}
+                    onSave={handleSaveProject}
+                />
+            )}
+            {isCompletionModalOpen && completingProject && (
+                <CompleteProjectTenderModal
+                    tenders={tenders}
+                    onClose={handleCloseCompletionModal}
+                    onSelect={handleCompleteProject}
+                    projectName={completingProject.name}
+                />
+            )}
+        </div>
+    );
+}
+
+function ProjectModal({ project, onClose, onSave }: { project: Project | null; onClose: () => void; onSave: (data: Partial<Project>) => void; }) {
+    const [name, setName] = useState(project?.name || '');
+    const [description, setDescription] = useState(project?.description || '');
+    const [points, setPoints] = useState(project?.points || 10);
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        onSave({ name, description, points });
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50" onClick={onClose}>
+            <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+                <h2 className="text-2xl font-bold mb-6">{project ? 'Edit Project' : 'Add New Project'}</h2>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700">Project Name</label>
+                        <input type="text" value={name} onChange={e => setName(e.target.value)} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-amber-500 focus:border-amber-500" required />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700">Description</label>
+                        <textarea value={description} onChange={e => setDescription(e.target.value)} className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-amber-500 focus:border-amber-500" rows={3}></textarea>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700">Points</label>
+                        <input type="number" value={points} onChange={e => setPoints(parseInt(e.target.value) || 0)} min="0" className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-amber-500 focus:border-amber-500" required />
+                    </div>
+                    <div className="flex justify-end gap-4 pt-4">
+                        <button type="button" onClick={onClose} className="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded">Cancel</button>
+                        <button type="submit" className="bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-4 rounded">Save Project</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+}
+
+function CompleteProjectTenderModal({ tenders, onClose, onSelect, projectName }: { tenders: Tender[], onClose: () => void, onSelect: (tenderId: string) => void, projectName: string }) {
+    const [selectedTenderId, setSelectedTenderId] = useState<string>('');
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50" onClick={onClose}>
+            <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
+                <h2 className="text-2xl font-bold mb-2">Complete Project</h2>
+                <p className="mb-6">Who completed "{projectName}"?</p>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    {tenders.map(tender => (
+                        <button
+                            key={tender.id}
+                            onClick={() => setSelectedTenderId(tender.id)}
+                            className={`p-4 rounded-lg text-center border-2 transition-all ${selectedTenderId === tender.id ? 'bg-green-200 border-green-500 scale-105' : 'bg-gray-100 hover:bg-gray-200 border-gray-300'}`}
+                        >
+                            <span className="text-4xl">{tender.icon || '👤'}</span>
+                            <span className="block mt-2 font-semibold">{tender.name}</span>
+                        </button>
+                    ))}
+                </div>
+                <div className="flex justify-end gap-4 pt-8">
+                    <button type="button" onClick={onClose} className="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded">Cancel</button>
+                    <button
+                        type="button"
+                        onClick={() => onSelect(selectedTenderId)}
+                        disabled={!selectedTenderId}
+                        className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded disabled:bg-gray-400 disabled:cursor-not-allowed"
+                    >
+                        Confirm Completion
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}

@@ -1,15 +1,12 @@
 {
   "rewrites": [
-    { "source": "/api/:slug*", "destination": "/api/[...slug]" },
+    {
+      "source": "/api/:path*",
+      "destination": "/api/app/[...slug]?path=:path*"
+    },
     {
       "source": "/:path((?!api/|.*\\..*).*)",
       "destination": "/index.html"
-    }
-  ],
-  "crons": [
-    {
-      "path": "/api/cron/check-chores",
-      "schedule": "0 0 * * *"
     }
   ]
 }

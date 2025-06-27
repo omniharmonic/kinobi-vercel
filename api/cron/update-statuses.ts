@@ -38,6 +38,45 @@ function getChoreStatus(chore: Chore, config: Config): ChoreStatus {
     return 'good';
 }
 
+// Selects a "cheeky" message based on the status transition
+function getTransitionMessage(choreName: string, choreIcon: string, from: ChoreStatus | undefined, to: ChoreStatus): string | null {
+    const icon = `${choreIcon} `;
+    switch (to) {
+        case 'warning':
+            if (from === 'good') {
+                const messages = [
+                    `Just a heads up, ${choreName} is looking a bit neglected.`,
+                    `${choreName} is starting to feel lonely. Maybe pay it a visit?`,
+                    `The clock is ticking on ${choreName}...`
+                ];
+                return icon + messages[Math.floor(Math.random() * messages.length)];
+            }
+            return null;
+        case 'urgent':
+            if (from === 'warning') {
+                const messages = [
+                    `Okay, it's getting serious with ${choreName}. Time to take action!`,
+                    `${choreName} is pleading for attention!`,
+                    `We've reached critical levels of undone-ness for ${choreName}.`
+                ];
+                return icon + "🔥 " + messages[Math.floor(Math.random() * messages.length)];
+            }
+            return null;
+        case 'overdue':
+            if (from === 'urgent') {
+                const messages = [
+                    `IT'S OVERDUE! ${choreName} has been officially abandoned.`,
+                    `Sound the alarms! ${choreName} is now overdue.`,
+                    `We may have a situation here. ${choreName} is past its due date.`
+                ];
+                return icon + "🚨 " + messages[Math.floor(Math.random() * messages.length)];
+            }
+            return null;
+        default:
+            return null;
+    }
+}
+
 // Helper to call the Telegram API
 async function callTelegramApi(method: string, params: object) {
     const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -85,13 +124,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
                 const lastStatus = lastKnownStatuses[chore.id];
                 
-                // 4. Check for transition to "overdue"
-                if (currentStatus === 'overdue' && lastStatus !== 'overdue') {
-                    const message = `🚨 Chore Overdue: ${chore.icon} ${chore.name}`;
-                    await callTelegramApi('sendMessage', {
-                        chat_id: config.telegramChatId,
-                        text: message,
-                    });
+                // 4. Check for any status transition and send a notification
+                if (currentStatus !== lastStatus) {
+                    const message = getTransitionMessage(chore.name, chore.icon, lastStatus, currentStatus);
+                    if (message) {
+                        await callTelegramApi('sendMessage', {
+                            chat_id: config.telegramChatId,
+                            text: message,
+                        });
+                    }
                 }
             }
             

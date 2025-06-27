@@ -1299,102 +1299,166 @@ bun run health && bun run logs
 
 The application is now a sophisticated, production-ready chore tracking system with enterprise-grade monitoring, automatic recovery, and comprehensive operational tooling - ready for immediate household deployment and long-term reliable operation. 
 
-# Kinobi Telegram Bot Implementation Plan
+---
+---
 
-This document details the phased implementation plan for the Kinobi Telegram Bot, breaking down the development process into logical, manageable stages.
+# Kinobi V2 Enhancement Plan ⏳ PENDING
+*This plan outlines the implementation of dynamic notifications, gamification, and UI enhancements.*
 
-## Phase 1: Core Bot Infrastructure and Configuration
+## Phase 8: Notification and Nudging System ⏳ PENDING
 
-**Goal:** Set up the basic infrastructure for the bot and allow users to configure it from the frontend.
+### 8.1 From Cron to External Scheduler ⏳ NEEDS IMPLEMENTATION
+**Status**: Critical backend integration needed
 
-1.  **Telegram Bot Creation:**
-    -   Use the `BotFather` on Telegram to create a new bot for Kinobi.
-    -   Save the generated Bot Token securely.
+**Required Tasks:**
+- [ ] Choose and sign up for an external scheduling service (e.g., Inngest, Trigger.dev).
+- [ ] Create the `/api/cron/update-statuses.ts` serverless function. This function must be secured, for instance by checking a `CRON_SECRET` that is also configured in the scheduler's request.
+- [ ] Configure the external service to send a `POST` request to the production URL of `/api/cron/update-statuses` every 5 minutes.
 
-2.  **Backend Setup:**
-    -   Store the Bot Token as a secret in Vercel Project Settings (`TELEGRAM_BOT_TOKEN`).
-    -   Create a new serverless function: `api/telegram.ts`. This will be the webhook handler.
-    -   Implement a `setWebhook` utility that, when run (e.g., on deploy or manually), registers the `api/telegram.ts` URL with the Telegram API.
+**Expected Implementation (`update-statuses.ts`):**
+```typescript
+import { VercelRequest, VercelResponse } from '@vercel/node';
+import { kv } from '@vercel/kv';
 
-3.  **Configuration Data Model:**
-    -   Extend the `Config` interface in `api/[...slug].ts` to include optional Telegram settings:
-        ```typescript
-        interface Config {
-          // ... existing fields
-          telegramBotToken?: string; // Note: For user-provided bots, though a single app-bot is better.
-          telegramChatId?: string;
-        }
-        ```
-    -   *Decision:* For simplicity and security, we will use a single, application-wide bot token stored in Vercel secrets. The UI will only need to ask for the `telegramChatId`. The `telegramBotToken` field can be omitted from the user-facing config.
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // 1. Secure the endpoint
+  if (req.headers['authorization'] !== `Bearer ${process.env.CRON_SECRET}`) {
+    return res.status(401).send('Unauthorized');
+  }
 
-4.  **Frontend UI for Configuration:**
-    -   In `src/main.tsx`, update the `SyncSettingsView` component.
-    -   Add a new section for "Telegram Notifications."
-    -   Include an input field for the "Telegram Channel/Chat ID."
-    -   When the user saves, the `telegramChatId` should be saved to their `syncId`'s configuration via the Core API.
+  // 2. Add logic to check for status changes and send notifications...
+  
+  res.status(200).send('Status update check complete.');
+}
+```
 
-5.  **Cron Job for Discovering Instances:**
-    -   To enable the cron job to find all `syncId`s, we need to track them.
-    -   Modify the `getInstanceData` function in `api/[...slug].ts`. When a new `syncId` is accessed for the first time, add it to a shared Set in the KV store (e.g., `kinobi:all_sync_ids`).
+### 8.2 Dynamic Notification Logic ⏳ NEEDS IMPLEMENTATION
+**Status**: Core notification logic needed
 
-## Phase 2: Interactive Chore Logging
+**Required Tasks:**
+- [ ] In the status updater, after calculating the new `CountdownState` for a chore, compare its `status` field to the one stored in `kinobi:{syncId}:chore_statuses`.
+- [ ] If the status has changed, trigger a Telegram notification.
+- [ ] Create a message library to select different "cheeky" messages based on the transition (e.g., `good` -> `warning` messages, `warning` -> `urgent`, etc.).
+- [ ] In the main API handler (`/api/[...slug].ts`), modify the `/tend` endpoint to trigger an immediate, celebratory notification upon successful completion.
+- [ ] The status updater should also be responsible for sending periodic (e.g., weekly) leaderboard summaries.
 
-**Goal:** Implement the functionality for users to log chores directly from Telegram.
+**Expected Implementation (`update-statuses.ts`):**
+```typescript
+// Pseudocode for status update logic
+for (const syncId of allSyncIds) {
+  const instance = await getInstanceData(syncId);
+  const oldStatuses = await kv.get(`kinobi:${syncId}:chore_statuses`) || {};
+  const newStatuses = {};
 
-1.  **Command Handling (`api/telegram.ts`):**
-    -   Implement a handler for the `/start` command to greet users.
-    -   Implement a handler for a `/log` command. This command will require the user's `syncId` to be associated with their Telegram user ID (this is a new requirement to be solved).
-    -   *Solution for User<>SyncId mapping:* On `/start`, if the user is unknown, the bot will provide a unique code for them to enter in the Kinobi settings UI, creating the link.
+  for (const chore of instance.chores) {
+    const newState = CountdownService.calculateCountdownState(chore, instance.config);
+    const oldStatus = oldStatuses[chore.id];
+    
+    if (newState.status !== oldStatus) {
+      // Status has changed, send a notification
+      const message = selectMessageForTransition(oldStatus, newState.status, chore.name);
+      await sendTelegramMessage(instance.config.telegramChatId, message);
+    }
+    
+    newStatuses[chore.id] = newState.status;
+  }
+  
+  await kv.set(`kinobi:${syncId}:chore_statuses`, newStatuses);
+}
+```
 
-2.  **Chore Selection Flow:**
-    -   On `/log`, the webhook will call the Core API (`/api/[syncId]/chores`) to get the list of chores.
-    -   It will then present these chores as an inline keyboard to the user in the Telegram chat. Each button's callback data will contain the `choreId`.
+## Phase 9: Gamification Engine ⏳ PENDING
 
-3.  **Tender Selection Flow:**
-    -   When a user clicks a chore button, handle the `callback_query` webhook.
-    -   Call the Core API (`/api/[syncId]/tenders`) to get the list of tenders.
-    -   Present the tenders as a new inline keyboard. The callback data will contain the `choreId` and `tenderId`.
+### 9.1 Core Data Model Extensions ⏳ NEEDS IMPLEMENTATION
+**Status**: New interfaces and config options needed
 
-4.  **Logging the Tending Event:**
-    -   When a user clicks a tender button, handle the final `callback_query`.
-    -   Call the Core API's `POST /api/[syncId]/tend` endpoint with the `choreId` and `tenderId`.
-    -   On success, send a confirmation message to the user (e.g., "✅ Successfully logged tending for 'Clean the kitchen'").
-    -   On failure, send an informative error message.
+**Required Tasks:**
+- [ ] Add `pointsEnabled: boolean` to the `ChoreConfig` interface.
+- [ ] Create a `Reward` interface for individual and collective prizes.
+- [ ] Create a `Project` interface for special, non-recurring tasks.
+- [ ] Add `rewards: Reward[]` and `projects: Project[]` arrays to the main `KVInstanceData` structure.
 
-## Phase 3: Automated Chore Reminders
+**Technical Implementation:**
+```typescript
+interface ChoreConfig {
+  // ... existing fields
+  pointsEnabled: boolean;
+}
 
-**Goal:** Set up a cron job to automatically send notifications when chores become overdue.
+interface Reward {
+  id: string;
+  name: string;
+  description: string;
+  type: 'individual' | 'collective';
+  pointThreshold: number; // Points required to win
+  isAchieved: boolean;
+  achievedBy?: string; // Tender name for individual rewards
+  achievedAt?: number;
+}
 
-1.  **Create the Cron Job Endpoint:**
-    -   Create a new serverless function: `api/cron/check-chores.ts`.
-    -   Secure this endpoint to prevent public invocation (e.g., by checking a `CRON_SECRET` environment variable).
+interface Project {
+  id: string;
+  name: string;
+  description: string;
+  points: number;
+  status: 'todo' | 'in_progress' | 'done';
+  completedBy?: string; // Tender name
+  completedAt?: number;
+}
 
-2.  **Configure the Cron Job:**
-    -   Add a new cron job definition to `vercel.json` to trigger `api/cron/check-chores.ts` on a schedule (e.g., `0 * * * *` for every hour).
+interface KVInstanceData {
+  // ... existing fields
+  config: ChoreConfig;
+  rewards: Reward[];
+  projects: Project[];
+}
+```
 
-3.  **Implement the Reminder Logic:**
-    -   In the cron function, fetch the list of all `syncId`s from the `kinobi:all_sync_ids` set in KV.
-    -   Iterate through each `syncId`.
-    -   Fetch its configuration. If `telegramChatId` is not set, skip it.
-    -   Fetch its chores and the last known statuses for its chores from KV (e.g., `kinobi:[syncId]:chore_statuses`).
-    -   For each chore:
-        -   Calculate the current status.
-        -   Compare it to the last known status.
-        -   If the status has changed to `overdue`, format a notification message.
-        -   Use the Telegram Bot API to send the message to the configured `telegramChatId`.
-    -   After checking all chores for a `syncId`, update the `chore_statuses` in KV for the next run.
+### 9.2 New API Endpoints ⏳ NEEDS IMPLEMENTATION
+**Status**: All endpoints require implementation
 
-## Phase 4: Refinement and Deployment
+**Required Endpoints:**
+```
+# Rewards
+GET    /api/{syncId}/rewards          # Get all rewards
+POST   /api/{syncId}/rewards          # Create a new reward
+PUT    /api/{syncId}/rewards/{id}     # Update a reward
+DELETE /api/{syncId}/rewards/{id}     # Delete a reward
 
-**Goal:** Polish the feature, add final touches, and deploy.
+# Projects
+GET    /api/{syncId}/projects         # Get all projects
+POST   /api/{syncId}/projects         # Create a new project
+PUT    /api/{syncId}/projects/{id}    # Update a project
+DELETE /api/{syncId}/projects/{id}    # Delete a project
+POST   /api/{syncId}/projects/{id}/complete # Mark a project as complete
+```
 
-1.  **Bot Commands and Description:**
-    -   Use `BotFather` to set a description, profile picture, and a list of available commands (`/log`, `/help`).
-2.  **Error Handling:**
-    -   Implement robust error handling throughout the bot's conversation flows. Inform the user if something goes wrong.
-3.  **Testing:**
-    -   Thoroughly test the configuration UI, the interactive logging flow, and the cron-based reminders.
-4.  **Deployment:**
-    -   Deploy the application to Vercel.
-    -   Ensure all environment variables (`TELEGRAM_BOT_TOKEN`, `CRON_SECRET`) are set correctly in the Vercel project.
-    -   Run the `setWebhook` utility one last time to point Telegram to the production URL. 
+### 9.3 Backend Logic for Gamification ⏳ NEEDS IMPLEMENTATION
+**Status**: Core logic needed for points and rewards
+
+**Required Implementation:**
+- **Points Toggle:** In all places where points are awarded or scores calculated (e.g., `/tend` endpoint, leaderboard), add a check for `instance.config.pointsEnabled`.
+- **Project Completion:** The `/projects/{id}/complete` endpoint will award the project's points to the tender, update the project status, and trigger a celebratory Telegram message.
+- **Reward Achievement:** After any action that changes a user's score (tending a chore, completing a project), a new function `checkRewardAchievements` must be called.
+    - This function will iterate through all `unachieved` rewards.
+    - For `individual` rewards, it checks if any tender's score now exceeds the `pointThreshold`.
+    - For `collective` rewards, it calculates the sum of all tender scores and checks that against the `pointThreshold`.
+    - If a reward is achieved, it updates the reward's status and triggers a special "Prize Unlocked!" notification.
+
+## Phase 10: UI/UX Refinement ⏳ PENDING
+
+### 10.1 Settings & Chore Management Redesign ⏳ NEEDS IMPLEMENTATION
+**Status**: Frontend components need to be created/refactored
+
+**Required Tasks:**
+- [ ] In `SyncSettingsView`, add a toggle switch for "Enable Points & Leaderboard".
+- [ ] Refactor `ManageChoresComponent`. When a user clicks "Edit" on a chore, open a full-featured modal window instead of using multiple small prompts. This modal should provide a "sleek" and mobile-friendly way to edit the chore's name, icon, cycle duration, and points.
+- [ ] Ensure all new inputs have proper validation.
+
+### 10.2 New UI Views for Gamification ⏳ NEEDS IMPLEMENTATION
+**Status**: New frontend views required
+
+**Required Tasks:**
+- [ ] Create a `RewardsView` component. It should display a list of all prizes, show progress towards each, and have a form to create/edit rewards.
+- [ ] Create a `ProjectsView` component. It should display projects in a Kanban-style layout (To Do, In Progress, Done) and allow users to create projects and mark them as complete.
+- [ ] Add "Rewards" and "Projects" to the main navigation bar in `KinobiLayout`, conditionally rendered if the instance has any rewards or projects. The Leaderboard link should be conditionally rendered based on `config.pointsEnabled`. 

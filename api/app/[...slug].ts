@@ -37,6 +37,28 @@ interface Config {
   telegramUserId?: number;
   telegramLinkingToken?: string;
   telegramLinkingTokenTimestamp?: number;
+  pointsEnabled: boolean;
+}
+
+interface Reward {
+  id: string;
+  name: string;
+  description: string;
+  type: 'individual' | 'collective';
+  pointThreshold: number;
+  isAchieved: boolean;
+  achievedBy?: string;
+  achievedAt?: number;
+}
+
+interface Project {
+  id: string;
+  name: string;
+  description: string;
+  points: number;
+  status: 'todo' | 'in_progress' | 'done';
+  completedBy?: string;
+  completedAt?: number;
 }
 
 interface KinobiData {
@@ -44,6 +66,8 @@ interface KinobiData {
   tenders: Tender[];
   history: HistoryEntry[];
   config: Config;
+  rewards: Reward[];
+  projects: Project[];
 }
 
 // Helper functions
@@ -59,10 +83,13 @@ async function getInstanceData(syncId: string): Promise<KinobiData> {
       chores: [],
       tenders: [],
       history: [],
+      rewards: [],
+      projects: [],
       config: {
         warningThreshold: 0.75,
         dangerThreshold: 0.9,
         pointCycle: 30, // Default point cycle in days
+        pointsEnabled: true, // Points are enabled by default
       },
     };
     await setInstanceData(syncId, defaultData);
@@ -79,6 +106,61 @@ async function getInstanceData(syncId: string): Promise<KinobiData> {
 async function setInstanceData(syncId: string, data: KinobiData): Promise<void> {
     const key = `kinobi:${syncId}`;
     await kv.set(key, data);
+}
+
+async function checkRewardAchievements(syncId: string, data: KinobiData) {
+    if (!data.config.pointsEnabled || !data.rewards || data.rewards.length === 0) {
+        return; // No need to check if points are disabled or there are no rewards
+    }
+
+    // Calculate current total scores for all tenders
+    const tenderScores: { [key: string]: number } = {};
+    for (const tender of data.tenders) {
+        tenderScores[tender.name] = 0;
+    }
+    for (const entry of data.history) {
+        if (tenderScores[entry.tender] !== undefined) {
+            tenderScores[entry.tender] += entry.points;
+        }
+    }
+    const collectiveScore = Object.values(tenderScores).reduce((sum, score) => sum + score, 0);
+
+    let wasRewardAchieved = false;
+
+    for (const reward of data.rewards) {
+        if (reward.isAchieved) {
+            continue; // Skip already achieved rewards
+        }
+
+        let achievementCheck = false;
+        let achievedByName: string | undefined = undefined;
+
+        if (reward.type === 'collective' && collectiveScore >= reward.pointThreshold) {
+            achievementCheck = true;
+        } else if (reward.type === 'individual') {
+            for (const tenderName in tenderScores) {
+                if (tenderScores[tenderName] >= reward.pointThreshold) {
+                    achievementCheck = true;
+                    achievedByName = tenderName;
+                    break; // An individual reward is achieved by the first person to cross the threshold
+                }
+            }
+        }
+
+        if (achievementCheck) {
+            reward.isAchieved = true;
+            reward.achievedAt = Date.now();
+            reward.achievedBy = achievedByName;
+            wasRewardAchieved = true;
+            
+            // TODO: Send a special "Prize Unlocked!" notification via Telegram
+        }
+    }
+
+    // If any reward was newly achieved, we need to save the updated data
+    if (wasRewardAchieved) {
+        await setInstanceData(syncId, data);
+    }
 }
 
 // Main handler
@@ -125,7 +207,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 if (resource === 'tenders') return res.status(200).json(data.tenders || []);
                 if (resource === 'history') return res.status(200).json(data.history || []);
                 if (resource === 'config') return res.status(200).json(data.config || {});
+                if (resource === 'rewards') return res.status(200).json(data.rewards || []);
+                if (resource === 'projects') return res.status(200).json(data.projects || []);
                 if (resource === 'leaderboard') {
+                    // If points are disabled, return an empty leaderboard
+                    if (!data.config.pointsEnabled) {
+                        return res.status(200).json([]);
+                    }
+
                     const { period = 'all', sortBy = 'points' } = req.query;
 
                     const tenderScores: { [key: string]: { totalPoints: number; completionCount: number; lastActivity: number } } = {};
@@ -214,6 +303,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                     await setInstanceData(syncId, data);
                     return res.status(201).json(newTender);
                 }
+                if (resource === 'rewards') {
+                    const newReward = req.body as Reward;
+                    if (!data.rewards) data.rewards = [];
+                    data.rewards.push(newReward);
+                    await setInstanceData(syncId, data);
+                    return res.status(201).json(newReward);
+                }
+                if (resource === 'projects') {
+                    const newProject = req.body as Project;
+                    if (!data.projects) data.projects = [];
+                    data.projects.push(newProject);
+                    await setInstanceData(syncId, data);
+                    return res.status(201).json(newProject);
+                }
                 if (resource === 'tend') {
                     const { choreId, tenderId, notes } = req.body;
                     const chore = data.chores.find(c => c.id === choreId);
@@ -230,7 +333,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                             chore: chore.name, 
                             tender: tender.name,
                             timestamp: timestamp,
-                            points: chore.points,
+                            points: data.config.pointsEnabled ? chore.points : 0, // Award 0 points if disabled
                             notes: notes || null,
                         };
 
@@ -246,37 +349,84 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                         // tender.points += chore.points;
 
                         await setInstanceData(syncId, data);
+                        await checkRewardAchievements(syncId, data); // Check for rewards after tending
                         return res.status(200).json({ success: true, historyEntry });
                     }
                     return res.status(404).json({ error: 'Chore or Tender not found' });
                 }
-                if (resource === 'telegram' && rest.length > 0 && rest[0] === 'generate-token') {
-                    const token = Math.floor(100000 + Math.random() * 900000).toString(); // 6-digit token
-                    data.config.telegramLinkingToken = token;
-                    data.config.telegramLinkingTokenTimestamp = Date.now();
-                    
-                    // Create a temporary reverse-lookup record with a 10-minute expiry
+                // Handler for linking telegram user
+                if (resource === 'link-telegram') {
+                    const { token } = req.body;
+                    if (!token || typeof token !== 'string') {
+                        return res.status(400).json({ error: 'Token is required' });
+                    }
+
                     const tokenKey = `kinobi:token:${token}`;
-                    await kv.set(tokenKey, syncId, { ex: 600 }); // 600 seconds = 10 minutes
+                    const storedSyncId = await kv.get(tokenKey);
+
+                    if (storedSyncId !== syncId) {
+                        return res.status(403).json({ error: 'Invalid token for this syncId' });
+                    }
+
+                    const telegramUser = data.config.telegramUserId;
+                    if (!telegramUser) {
+                        return res.status(400).json({ error: 'Telegram user ID not set in config yet. Try /start with the bot first.' });
+                    }
                     
-                    await setInstanceData(syncId, data);
-                    return res.status(200).json({ token });
+                    const userMappingKey = `kinobi:telegram_user:${telegramUser}`;
+                    await kv.set(userMappingKey, syncId);
+                    
+                    // Clean up the linking token
+                    await kv.del(tokenKey);
+                    
+                    return res.status(200).json({ success: true, message: 'Telegram account linked successfully.' });
+                }
+                if (resource === 'projects' && rest[0] && rest[1] === 'complete') {
+                    const projectId = rest[0];
+                    const { tenderId } = req.body;
+                    
+                    const projectIndex = data.projects.findIndex(p => p.id === projectId);
+                    const tender = data.tenders.find(t => t.id === tenderId);
+
+                    if (projectIndex !== -1 && tender) {
+                        const project = data.projects[projectIndex];
+                        if (project.status === 'done') {
+                            return res.status(400).json({ error: 'Project already completed.' });
+                        }
+                        
+                        project.status = 'done';
+                        project.completedBy = tender.name;
+                        project.completedAt = Date.now();
+
+                        // Create a history entry for the project completion
+                        const historyEntry: HistoryEntry = {
+                            id: `hist_${project.completedAt}_${project.id}`,
+                            chore: project.name, // Using 'chore' field for project name
+                            tender: tender.name,
+                            timestamp: project.completedAt,
+                            points: data.config.pointsEnabled ? project.points : 0,
+                            notes: 'Project completion',
+                        };
+                        data.history.unshift(historyEntry);
+
+                        await setInstanceData(syncId, data);
+                        await checkRewardAchievements(syncId, data); // Check for rewards after project completion
+                        
+                        // TODO: Here we should send a Telegram notification for celebration
+
+                        return res.status(200).json({ success: true, project });
+                    }
+                    return res.status(404).json({ error: 'Project or Tender not found' });
                 }
                 break;
-            
+
             case 'PUT':
-                if (resource === 'config') {
-                    const updatedConfig = req.body as Partial<Config>;
-                    data.config = { ...data.config, ...updatedConfig };
-                    await setInstanceData(syncId, data);
-                    return res.status(200).json(data.config);
-                }
                 if (resource === 'chores' && rest.length > 0) {
                     const choreId = rest[0];
-                    const updatedChoreData = req.body as Partial<Chore>;
+                    const updatedChore = req.body as Partial<Chore>;
                     const choreIndex = data.chores.findIndex(c => c.id === choreId);
-                    if (choreIndex > -1) {
-                        data.chores[choreIndex] = { ...data.chores[choreIndex], ...updatedChoreData };
+                    if (choreIndex !== -1) {
+                        data.chores[choreIndex] = { ...data.chores[choreIndex], ...updatedChore };
                         await setInstanceData(syncId, data);
                         return res.status(200).json(data.chores[choreIndex]);
                     }
@@ -284,56 +434,81 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 }
                 if (resource === 'tenders' && rest.length > 0) {
                     const tenderId = rest[0];
-                    const tenderName = data.tenders.find(t => t.id === tenderId)?.name;
-                    const updatedTenderData = req.body as Partial<Tender>;
+                    const updatedTender = req.body as Partial<Tender>;
                     const tenderIndex = data.tenders.findIndex(t => t.id === tenderId);
-                    if (tenderIndex > -1) {
-                        data.tenders[tenderIndex] = { ...data.tenders[tenderIndex], ...updatedTenderData };
-                        // Update name in history if it has changed
-                        if (tenderName && updatedTenderData.name && tenderName !== updatedTenderData.name) {
-                            data.history.forEach(h => {
-                                if (h.tender === tenderName) {
-                                    h.tender = updatedTenderData.name as string;
-                                }
-                            });
-                        }
+                    if (tenderIndex !== -1) {
+                        data.tenders[tenderIndex] = { ...data.tenders[tenderIndex], ...updatedTender };
                         await setInstanceData(syncId, data);
                         return res.status(200).json(data.tenders[tenderIndex]);
                     }
                     return res.status(404).json({ error: 'Tender not found' });
                 }
-                if (resource === 'chores' && rest.length > 1 && rest[1] === 'reorder') {
-                    const { oldIndex, newIndex } = req.body;
-                    const [removed] = data.chores.splice(oldIndex, 1);
-                    data.chores.splice(newIndex, 0, removed);
+                if (resource === 'chores' && req.body.chores) { // For reordering
+                    const { chores: reorderedChores } = req.body;
+                    data.chores = reorderedChores;
                     await setInstanceData(syncId, data);
                     return res.status(200).json(data.chores);
                 }
+                if (resource === 'config') {
+                    const updatedConfig = req.body as Partial<Config>;
+                    data.config = { ...data.config, ...updatedConfig };
+                    await setInstanceData(syncId, data);
+                    return res.status(200).json(data.config);
+                }
+                if (resource === 'rewards' && rest.length > 0) {
+                    const rewardId = rest[0];
+                    const updatedReward = req.body as Partial<Reward>;
+                    const rewardIndex = data.rewards.findIndex(r => r.id === rewardId);
+                    if (rewardIndex !== -1) {
+                        data.rewards[rewardIndex] = { ...data.rewards[rewardIndex], ...updatedReward };
+                        await setInstanceData(syncId, data);
+                        return res.status(200).json(data.rewards[rewardIndex]);
+                    }
+                    return res.status(404).json({ error: 'Reward not found' });
+                }
+                if (resource === 'projects' && rest.length > 0) {
+                    const projectId = rest[0];
+                    const updatedProject = req.body as Partial<Project>;
+                    const projectIndex = data.projects.findIndex(p => p.id === projectId);
+                    if (projectIndex !== -1) {
+                        data.projects[projectIndex] = { ...data.projects[projectIndex], ...updatedProject };
+                        await setInstanceData(syncId, data);
+                        return res.status(200).json(data.projects[projectIndex]);
+                    }
+                    return res.status(404).json({ error: 'Project not found' });
+                }
                 break;
-            
+                
             case 'DELETE':
                 if (resource === 'chores' && rest.length > 0) {
                     const choreId = rest[0];
                     data.chores = data.chores.filter(c => c.id !== choreId);
                     await setInstanceData(syncId, data);
-                    return res.status(200).json({ success: true });
+                    return res.status(204).end();
                 }
                 if (resource === 'tenders' && rest.length > 0) {
                     const tenderId = rest[0];
-                    const tenderName = data.tenders.find(t => t.id === tenderId)?.name;
                     data.tenders = data.tenders.filter(t => t.id !== tenderId);
-                    // Optional: Remove tender from history as well, or reassign
-                    if (tenderName) {
-                        data.history = data.history.filter(h => h.tender !== tenderName);
-                    }
                     await setInstanceData(syncId, data);
-                    return res.status(200).json({ success: true });
+                    return res.status(204).end();
                 }
                 if (resource === 'history' && rest.length > 0) {
-                    const entryId = rest[0];
-                    data.history = data.history.filter(h => h.id !== entryId);
+                    const historyId = rest[0];
+                    data.history = data.history.filter(h => h.id !== historyId);
                     await setInstanceData(syncId, data);
-                    return res.status(200).json({ success: true });
+                    return res.status(204).end();
+                }
+                if (resource === 'rewards' && rest.length > 0) {
+                    const rewardId = rest[0];
+                    data.rewards = data.rewards.filter(r => r.id !== rewardId);
+                    await setInstanceData(syncId, data);
+                    return res.status(204).end();
+                }
+                if (resource === 'projects' && rest.length > 0) {
+                    const projectId = rest[0];
+                    data.projects = data.projects.filter(p => p.id !== projectId);
+                    await setInstanceData(syncId, data);
+                    return res.status(204).end();
                 }
                 break;
         }
@@ -341,7 +516,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(404).json({ error: `Resource '${resource}' not found.` });
 
     } catch (error: any) {
-        console.error('[KINOBI_API_ERROR]', error);
-        return res.status(500).json({ error: error.message || 'An internal server error occurred.' });
+        console.error('Error in API handler:', error);
+        return res.status(500).json({ error: error.message });
     }
 } 
