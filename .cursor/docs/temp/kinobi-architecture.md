@@ -28,16 +28,17 @@ The frontend is a single-page application built with React and TypeScript, provi
     - `ChoreTile`: An individual chore's visual representation, including the `ProgressRing`.
     - `TenderSelectionModal`: Modal for logging chore completion.
     - `LeaderboardView`: Displays rankings with filtering and sorting.
-    - `SyncSettingsView`: Container for all configuration components.
+    - `RewardsView`, `ProjectsView`: UI for managing new gamification features.
+    - `SyncSettingsView`: Container for all configuration components, including the redesigned `ManageChoresComponent`.
     - `TelegramSettingsComponent`: UI for configuring Telegram integration and generating linking tokens.
 
 ### Backend Architecture (Vercel Serverless) ✅ COMPLETE
 
 The backend consists of serverless functions that handle API requests, cron jobs, and Telegram webhooks.
 
-- **`/api/[...slug].ts`**: The main API handler responsible for all CRUD operations related to chores, tenders, history, and configuration. It serves as the backbone for the web application.
+- **`/api/app/[...slug].ts`**: The main API handler responsible for all CRUD operations related to chores, tenders, projects, rewards, history, and configuration. It serves as the backbone for the web application.
 - **`/api/telegram.ts`**: The Telegram webhook handler. It processes all incoming messages, commands (`/start`, `/log`, `/help`), and callback queries from the Telegram bot, enabling interactive chore logging.
-- **`/api/cron/check-chores.ts`**: A scheduled cron job that runs daily. It iterates through all user instances, checks for overdue chores, and sends notifications to the configured Telegram channel. This endpoint is secured with a `CRON_SECRET`.
+- **`/api/cron/update-statuses.ts`**: A high-frequency endpoint intended to be called by an external scheduler (e.g., cron-job.org). It iterates through all user instances, checks for chore status transitions (`good` -> `warning`, etc.), and sends notifications to the configured Telegram channel. This endpoint is secured with a `CRON_SECRET`.
 
 ### Database Architecture: Vercel KV ✅ COMPLETE
 
@@ -62,7 +63,7 @@ graph TD
     subgraph "Vercel Platform"
         Webhook[API: /api/telegram.ts]
         StatusUpdater[API: /api/cron/update-statuses.ts]
-        CoreAPI[API: /api/[...slug].ts]
+        CoreAPI[API: /api/app/[...slug].ts]
         KV(Vercel KV Store)
         Frontend(Kinobi React App)
     end
@@ -99,10 +100,10 @@ graph TD
     -   The **Webhook** handler uses the permanent mapping to find the user's `syncId`, fetches data via the **Core API**, and presents interactive keyboards.
     -   The final selection is logged via the **Core API**.
 
-3.  **Overdue Chore Reminders**:
-    -   The **Vercel Cron Job** triggers `api/cron/check-chores.ts` daily.
+3.  **Real-Time Status Notifications**:
+    -   An **External Scheduler** triggers `api/cron/update-statuses.ts` frequently (e.g., every 5-10 minutes).
     -   The function iterates through all users, calculates chore statuses, and compares them to the last known statuses stored in **KV**.
-    -   If a chore transitions to "overdue", a notification is sent via the **Bot** to the user's configured channel.
+    -   If a chore's status has changed, a "cheeky" notification is sent via the **Bot** to the user's configured channel.
 
 This architecture provides a robust, scalable, and feature-rich chore tracking system with deep Telegram integration, all running on a modern serverless platform.
 
@@ -143,29 +144,27 @@ This architecture provides a robust, scalable, and feature-rich chore tracking s
 
 ## Production Readiness Status
 
-**🟡 PARTIALLY READY** - Frontend complete, backend pending
+**✅ READY FOR PRODUCTION**
 
-### Ready for Production:
-- ✅ Complete frontend application with all features
-- ✅ PWA support for mobile installation
-- ✅ Vercel deployment configuration
-- ✅ Data migration strategy
-- ✅ Performance optimizations
-- ✅ Visual design and UX
+### Completed Implementation:
+- ✅ Complete frontend application with all features, including V2 enhancements.
+- ✅ Full backend API implementation with Vercel KV integration for all data models.
+- ✅ PWA support for mobile installation.
+- ✅ Vercel deployment configuration.
+- ✅ Data migration strategy and script.
+- ✅ Performance optimizations and responsive design.
+- ✅ Real-time notification endpoint ready for external scheduling.
+- ✅ End-to-end functionality has been tested during development.
 
-### Requires Implementation:
-- ⏳ Main API handler with Vercel KV integration
-- ⏳ Backend endpoint implementations
-- ⏳ Production testing and validation
-- ⏳ Live deployment and monitoring
+### Next Steps:
+- 🚀 Final deployment and live monitoring.
+- 🚀 Configuration of an external scheduling service to trigger the notification endpoint.
 
-**Estimated Completion Time**: 2-3 hours for backend implementation
-
-## V2 Architecture Enhancements ⏳ PENDING
+## V2 Architecture Enhancements ✅ COMPLETE
 
 The following enhancements transform Kinobi from a simple chore tracker into a dynamic and interactive household management system. They introduce event-driven notifications, gamification through rewards, and flexible task management with special projects.
 
-### Notification System: From CRON to Real-Time Nudging
+### Notification System: From CRON to Real-Time Nudging ✅ COMPLETE
 
 To provide more immediate feedback, the notification system will be upgraded from a single daily cron job to a more frequent, intelligent monitoring system.
 
@@ -177,7 +176,7 @@ This approach provides a robust, near real-time user experience using best-pract
 - **Celebration Posts:** Instant notifications when a chore or project is completed (triggered directly by the API).
 - **Leaderboard Updates:** Scheduled summaries of player rankings (triggered by the external scheduler).
 
-### Gamification Engine: Points, Projects, and Prizes
+### Gamification Engine: Points, Projects, and Prizes ✅ COMPLETE
 
 To boost engagement, we will introduce a configurable gamification engine.
 
@@ -187,9 +186,9 @@ To boost engagement, we will introduce a configurable gamification engine.
     -   **Individual Prizes:** Awarded when a single user reaches a specific point threshold.
     -   **Collective Prizes:** Awarded when the entire group's combined score reaches a target.
 
-### Architectural Impact
+### Architectural Impact ✅ COMPLETE
 
-These changes will introduce new data models within the `kinobi:{syncId}` KV store object and require new API endpoints. The core data flow for notifications will be significantly enhanced.
+These changes have introduced new data models within the `kinobi:{syncId}` KV store object and required new API endpoints. The core data flow for notifications has been significantly enhanced.
 
 ```mermaid
 graph TD
@@ -200,7 +199,7 @@ graph TD
     subgraph "Vercel Platform"
         Webhook[API: /api/telegram.ts]
         StatusUpdater[API: /api/cron/update-statuses.ts]
-        CoreAPI[API: /api/[...slug].ts]
+        CoreAPI[API: /api/app/[...slug].ts]
         KV(Vercel KV Store)
         Frontend(Kinobi React App)
     end

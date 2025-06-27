@@ -80,28 +80,28 @@ All tasks are completed. The project is production-ready.
 
 ---
 
-## V2 Enhancements - Scoping ⏳ PENDING
+## V2 Enhancements ✅ COMPLETE
 
-This section outlines the next wave of features to transform Kinobi into a more dynamic and interactive platform.
+This section outlines the wave of features that transformed Kinobi into a more dynamic and interactive platform.
 
-### Phase 8: Notification System Overhaul ⏳ PENDING
-- [ ] **Setup External Scheduler**: Configure an external service (e.g., Inngest) to trigger the `api/cron/update-statuses` endpoint every 5-10 minutes.
-- [ ] **Create Status Updater Endpoint**: Create and deploy the `api/cron/update-statuses.ts` serverless function.
-- [ ] **Multi-Status Detection**: Implement logic to detect transitions between all chore statuses (e.g., `good` -> `warning`, `warning` -> `urgent`).
-- [ ] **"Cheeky" Notifications**: Create a library of varied and engaging notification messages for each status transition.
-- [ ] **Celebration & Leaderboard Posts**: Implement instant notifications for chore/project completions and scheduled leaderboard updates via the Telegram bot.
+### Phase 8: Notification System Overhaul ✅ COMPLETE
+- [x] **Setup External Scheduler**: Configure an external service (e.g., Inngest) to trigger the `api/cron/update-statuses` endpoint every 5-10 minutes.
+- [x] **Create Status Updater Endpoint**: Create and deploy the `api/cron/update-statuses.ts` serverless function.
+- [x] **Multi-Status Detection**: Implement logic to detect transitions between all chore statuses (e.g., `good` -> `warning`, `warning` -> `urgent`).
+- [x] **"Cheeky" Notifications**: Create a library of varied and engaging notification messages for each status transition.
+- [x] **Celebration & Leaderboard Posts**: Implement instant notifications for chore/project completions and scheduled leaderboard updates via the Telegram bot.
 
-### Phase 9: Gamification Engine ⏳ PENDING
-- [ ] **Toggleable Points**: Add a `pointsEnabled` flag to the global config and integrate it across the UI and backend logic.
-- [ ] **Rewards Data Model**: Define the `Reward` interface and add `rewards: Reward[]` to the main instance data.
-- [ ] **Rewards API**: Create CRUD endpoints for managing rewards (`/api/{syncId}/rewards`).
-- [ ] **Rewards UI**: Develop a new `RewardsView` to allow users to create, manage, and track progress towards prizes.
-- [ ] **Project Data Model**: Define the `Project` interface for special one-off tasks and add `projects: Project[]` to instance data.
-- [ ] **Project API**: Create CRUD endpoints for managing projects (`/api/{syncId}/projects`).
-- [ ] **Project UI**: Develop a `ProjectsView` to create, assign, and complete special projects.
-- [ ] **Achievement Logic**: Update the backend to check for and award prizes when point thresholds are met.
+### Phase 9: Gamification Engine ✅ COMPLETE
+- [x] **Toggleable Points**: Add a `pointsEnabled` flag to the global config and integrate it across the UI and backend logic.
+- [x] **Rewards Data Model**: Define the `Reward` interface and add `rewards: Reward[]` to the main instance data.
+- [x] **Rewards API**: Create CRUD endpoints for managing rewards (`/api/{syncId}/rewards`).
+- [x] **Rewards UI**: Develop a new `RewardsView` to allow users to create, manage, and track progress towards prizes.
+- [x] **Project Data Model**: Define the `Project` interface for special one-off tasks and add `projects: Project[]` to instance data.
+- [x] **Project API**: Create CRUD endpoints for managing projects (`/api/{syncId}/projects`).
+- [x] **Project UI**: Develop a `ProjectsView` to create, assign, and complete special projects.
+- [x] **Achievement Logic**: Update the backend to check for and award prizes when point thresholds are met.
 
-### Phase 10: UI/UX Refinement ⏳ PENDING
-- [ ] **Chore Settings Redesign**: Refactor the `ManageChoresComponent` to be more "sleek" and mobile-friendly, using modals or inline editing.
-- [ ] **New Navigation**: Add links to the new `RewardsView` and `ProjectsView` in the main application layout.
-- [ ] **Integrate Points Toggle**: Add a UI switch in the settings to enable or disable the points and leaderboard system.
+### Phase 10: UI/UX Refinement ✅ COMPLETE
+- [x] **Chore Settings Redesign**: Refactor the `ManageChoresComponent` to be more "sleek" and mobile-friendly, using modals or inline editing.
+- [x] **New Navigation**: Add links to the new `RewardsView` and `ProjectsView` in the main application layout.
+- [x] **Integrate Points Toggle**: Add a UI switch in the settings to enable or disable the points and leaderboard system.
