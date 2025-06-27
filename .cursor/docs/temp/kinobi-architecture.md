@@ -156,21 +156,21 @@ This architecture provides a robust, scalable, and feature-rich chore tracking s
 - ✅ Real-time notification endpoint ready for external scheduling.
 - ✅ End-to-end functionality has been tested during development.
 
-### Next Steps:
-- 🚀 Final deployment and live monitoring.
-- 🚀 Configuration of an external scheduling service to trigger the notification endpoint.
+### Immediate Next Steps (Required for Full V2 Functionality):
+- 🟡 **Activate Notification System**: Configure an external scheduling service (e.g., cron-job.org, Inngest) to send a `POST` request to the `/api/cron/update-statuses` endpoint every 5-10 minutes. **This is required to make the V2 notification system operational.**
+- 🚀 **Final Deployment & Live Monitoring**: Monitor the live application for any issues under real-world usage.
 
-## V2 Architecture Enhancements ✅ COMPLETE
+## V2 Architecture Enhancements 🟡 PENDING DEPLOYMENT
 
-The following enhancements transform Kinobi from a simple chore tracker into a dynamic and interactive household management system. They introduce event-driven notifications, gamification through rewards, and flexible task management with special projects.
+The following enhancements transform Kinobi from a simple chore tracker into a dynamic and interactive household management system. They introduce event-driven notifications, gamification through rewards, and flexible task management with special projects. The backend and frontend code is complete, but the notification system requires external configuration to become fully operational.
 
-### Notification System: From CRON to Real-Time Nudging ✅ COMPLETE
+### Notification System: From CRON to Real-Time Nudging 🟡 PENDING DEPLOYMENT
 
 To provide more immediate feedback, the notification system will be upgraded from a single daily cron job to a more frequent, intelligent monitoring system.
 
 **The Challenge of Serverless Scheduling:** A truly "event-driven" system for time-based status changes (e.g., a chore becoming `urgent`) in a serverless environment is challenging. Vercel's built-in CRON jobs are limited to once per day on the Hobby plan, which is insufficient for real-time nudging. Relying on user activity to trigger checks is unreliable, as notifications would only be sent when someone is actively using the app.
 
-**The Solution: External Scheduling Service:** To solve this reliably without upgrading to a paid Vercel plan, we will integrate a dedicated external scheduler like [Inngest](https://www.inngest.com/) or [Trigger.dev](https://trigger.dev/). These services provide generous free tiers and are purpose-built for triggering serverless functions on a reliable, high-frequency schedule. The external service will be configured to call a Vercel endpoint every 5-10 minutes.
+**The Solution: External Scheduling Service:** To solve this reliably without upgrading to a paid Vercel plan, we will integrate a dedicated external scheduler like [Inngest](https://www.inngest.com/) or [Trigger.dev](https://trigger.dev/). These services provide generous free tiers and are purpose-built for triggering serverless functions on a reliable, high-frequency schedule. The external service must be configured to call a Vercel endpoint every 5-10 minutes.
 
 This approach provides a robust, near real-time user experience using best-practice serverless architecture. It also supports other notification-based features:
 - **Celebration Posts:** Instant notifications when a chore or project is completed (triggered directly by the API).

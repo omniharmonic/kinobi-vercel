@@ -1226,13 +1226,13 @@ The application is now a sophisticated, production-ready chore tracking system w
 ---
 ---
 
-# Kinobi V2 Enhancements ✅ COMPLETE
+# Kinobi V2 Enhancements 🟡 PENDING DEPLOYMENT
 *This plan outlines the implementation of dynamic notifications, gamification, and UI enhancements.*
 
-## Phase 8: Notification and Nudging System ✅ COMPLETE
+## Phase 8: Notification and Nudging System 🟡 PENDING DEPLOYMENT
 
-### 8.1 From Cron to External Scheduler ✅ COMPLETE
-**Status**: Backend endpoint is live and ready.
+### 8.1 From Cron to External Scheduler 🟡 PENDING DEPLOYMENT
+**Status**: Backend endpoint is live and ready, but requires an external scheduler to be configured.
 
 **Completed Tasks:**
 - ✅ `/api/cron/update-statuses.ts` serverless function created and deployed.
@@ -1333,3 +1333,20 @@ POST   /api/{syncId}/projects/{id}/complete
 - ✅ Created and implemented a fully functional `RewardsView` component.
 - ✅ Created and implemented a fully functional `ProjectsView` component.
 - ✅ Added "Rewards" and "Projects" to the main navigation bar. The Leaderboard link is now conditionally rendered based on `config.pointsEnabled`. 
+
+---
+
+## Postponed & Future Enhancements
+*This section details features and improvements that were discussed but not included in the V2 implementation. They represent potential future work.*
+
+### Postponed UI/UX Enhancements
+- [ ] **Projects Kanban View**: A planned improvement to the `ProjectsView` is to transform it from the current list-based layout into a more dynamic Kanban-style board. This would involve creating columns for "To Do", "In Progress", and "Done", allowing users to drag and drop projects between states for a more intuitive workflow.
+
+### Future Features (Beyond V2 Scope)
+- [ ] **Advanced Admin Controls**: These features are aimed at providing more powerful management capabilities.
+    - **Bulk Operations**: Implement the ability to select multiple chores at once to perform bulk actions like deleting or modifying their points/cycle.
+    - **Configuration Import/Export**: Add a feature to download the entire instance configuration (`chores`, `tenders`, `config`, etc.) as a single JSON file for backup or migration, and the ability to upload a JSON file to restore a configuration.
+- [ ] **Analytics Dashboard**: Create a new view dedicated to analytics and insights.
+    - **Completion Rate Charts**: Display historical data on chore completion rates, showing trends over time.
+    - **Points Distribution Graphs**: Visualize how points are distributed among different tenders.
+    - **Leaderboard History**: Show how leaderboard rankings have changed over various time periods. 
