@@ -84,8 +84,8 @@ All tasks are completed. The project is production-ready.
 
 This section outlines the wave of features that transformed Kinobi into a more dynamic and interactive platform.
 
-### Phase 8: Notification System Overhaul ✅ COMPLETE
-- [x] **Setup External Scheduler**: Configure an external service (e.g., Inngest) to trigger the `api/cron/update-statuses` endpoint every 5-10 minutes.
+### Phase 8: Notification System Overhaul 🟡 PENDING DEPLOYMENT
+- [ ] **Setup External Scheduler**: Configure an external service (e.g., cron-job.org, Inngest) to trigger the `api/cron/update-statuses` endpoint every 5-10 minutes. The endpoint is built and ready, but this external step is required to activate the notification system.
 - [x] **Create Status Updater Endpoint**: Create and deploy the `api/cron/update-statuses.ts` serverless function.
 - [x] **Multi-Status Detection**: Implement logic to detect transitions between all chore statuses (e.g., `good` -> `warning`, `warning` -> `urgent`).
 - [x] **"Cheeky" Notifications**: Create a library of varied and engaging notification messages for each status transition.
@@ -100,8 +100,23 @@ This section outlines the wave of features that transformed Kinobi into a more d
 - [x] **Project API**: Create CRUD endpoints for managing projects (`/api/{syncId}/projects`).
 - [x] **Project UI**: Develop a `ProjectsView` to create, assign, and complete special projects.
 - [x] **Achievement Logic**: Update the backend to check for and award prizes when point thresholds are met.
-
-### Phase 10: UI/UX Refinement ✅ COMPLETE
-- [x] **Chore Settings Redesign**: Refactor the `ManageChoresComponent` to be more "sleek" and mobile-friendly, using modals or inline editing.
 - [x] **New Navigation**: Add links to the new `RewardsView` and `ProjectsView` in the main application layout.
 - [x] **Integrate Points Toggle**: Add a UI switch in the settings to enable or disable the points and leaderboard system.
+
+---
+
+## Future Considerations & Postponed Tasks
+
+This section captures planned work that was not part of the V2 implementation.
+
+### Postponed UI/UX Enhancements
+- [ ] **Projects Kanban View**: Upgrade the `ProjectsView` from a simple list to a Kanban-style board with columns for "To Do", "In Progress", and "Done" to better visualize project flow.
+
+### Future Features (Beyond V2 Scope)
+- [ ] **Advanced Admin Controls**:
+    - [ ] Bulk operations for editing or deleting multiple chores at once.
+    - [ ] A system for importing or exporting the entire instance configuration as a JSON file.
+- [ ] **Analytics Dashboard**:
+    - [ ] Visual charts showing chore completion rates over time.
+    - [ ] Graphs illustrating points distribution among tenders.
+    - [ ] Leaderboard trend analysis.
